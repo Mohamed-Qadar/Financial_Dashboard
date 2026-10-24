@@ -238,7 +238,22 @@ none").
 ## 6. Application security baseline
 - Django security middleware; in production `SECURE_SSL_REDIRECT`, HSTS, `SECURE_PROXY_SSL_HEADER`
   (behind a trusted proxy), secure cookies, `X-Frame-Options: DENY`, `Referrer-Policy`.
-- Content Security Policy on the Next.js app (Phase 2+).
+- Content Security Policy on the Next.js app (milestone 2.8a, `frontend/src/proxy.ts`): a
+  fresh nonce per request; production `script-src 'self' 'nonce-…' 'strict-dynamic'`,
+  `style-src 'self' 'nonce-…'`, `connect-src 'self'`, `object-src 'none'`,
+  `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`,
+  `upgrade-insecure-requests` (verified: every script tag carries the nonce; no violations
+  in the browser). Development adds only `'unsafe-eval'`, inline styles and the hot-reload
+  websocket. Pages also send `X-Frame-Options: DENY`, `nosniff`, `Permissions-Policy` and
+  `Referrer-Policy: no-referrer` (the reset link carries a token).
+- Frontend rules (convention tests): no `dangerouslySetInnerHTML`, no inline styles, API calls
+  only through the client, browser storage only for UI preferences, preview data and
+  API-less providers only in the development gallery. Post-login redirects accept only
+  same-site paths (`lib/redirects.ts`, incl. encoded `//` and backslash tricks). The
+  password-reset token is removed from the address bar as soon as it is read and is never
+  shown or logged.
+- The proxy's login redirect only checks that a session cookie exists; the API remains the
+  authority (403 → login page, 404 for a company → company picker).
 - `DEBUG=False` and a strong `DJANGO_SECRET_KEY` are required outside development;
   the settings module refuses to start otherwise.
 - Strict `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`.

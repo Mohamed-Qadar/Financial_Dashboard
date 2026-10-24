@@ -35,7 +35,8 @@ docker compose up --build     # first run builds images and applies migrations
 
 | Service | URL |
 |---|---|
-| Web app (status page) | http://localhost:3000 |
+| Web app (sign in, Somali/English) | http://localhost:3000 |
+| UI component preview (development only) | http://localhost:3000/ui-preview |
 | API liveness | http://localhost:8000/api/v1/health/ |
 | API readiness (checks DB) | http://localhost:8000/api/v1/health/ready/ |
 | OpenAPI schema | http://localhost:8000/api/schema/ |
@@ -48,6 +49,11 @@ Authentication API (session cookies + CSRF): `/api/v1/auth/` — `csrf/`, `login
 `me/`, `password/change/`, `password/reset/`, `password/reset/confirm/`. Details and limits in
 [docs/SECURITY.md § 3](docs/SECURITY.md#3-authentication-implemented-in-milestone-22).
 In development, password-reset e-mails are printed to the backend log (`docker compose logs backend`).
+
+Web app pages: `/login`, `/forgot-password`, `/reset-password` (from the e-mailed link),
+`/select-company`, `/c/<companyId>` (company overview; the company is part of the URL and
+checked by the server on every request), `/account` (password change). The language switch
+(SO/EN) is stored in the `erp_lang` cookie; Somali is the default.
 
 Companies (`/api/v1/`): `GET companies/` lists the companies the user may open; company-scoped
 endpoints (`GET company/`, `POST company/select/`) need the `X-Company-ID` header, which the

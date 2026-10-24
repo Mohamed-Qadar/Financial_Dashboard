@@ -57,6 +57,14 @@ starting work. The owner communicates in Turkish; code, comments and docs are in
     event types to `apps/audit/events.py`; never rename them. Never put secrets or unnecessary
     personal data in audit metadata or logs.
 
+## Frontend conventions (frontend/, milestone 2.8a)
+- All API calls through `src/lib/api/` (CSRF, `X-Company-ID`, error codes); never raw `fetch`.
+- Company-scoped pages live under `src/app/(app)/c/[companyId]/`; the company comes from the URL.
+- Every user-facing string in both `src/lib/i18n/messages/en.ts` and `so.ts` (Somali drafts need review).
+- Show only data returned by the API; never fabricate figures. Preview data only in `src/dev/`.
+- No inline styles or `dangerouslySetInnerHTML` (CSP); styles use tokens from `src/styles/tokens.css`.
+- No new runtime dependencies without the owner's approval.
+
 ## Conventions
 - Apps live in `backend/apps/<name>/` with `models.py`, `selectors.py`, `services.py`,
   `serializers.py`, `views.py`, `urls.py`, `tests/`. Create an app only when its phase starts.

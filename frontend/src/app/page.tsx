@@ -1,19 +1,14 @@
-import { StatusPanel } from "@/components/StatusPanel";
-import { getSystemStatus } from "@/lib/health";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-// Status must be checked on every request, never prerendered at build time.
-export const dynamic = "force-dynamic";
+import { DEFAULT_AFTER_LOGIN } from "@/lib/redirects";
+import { SESSION_COOKIE } from "@/lib/security";
 
-export default async function HomePage() {
-  const status = await getSystemStatus(
-    process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000",
-  );
-
-  return (
-    <main className="container">
-      <h1>Somali ERP</h1>
-      <p className="muted">Development environment</p>
-      <StatusPanel status={status} />
-    </main>
-  );
+/**
+ * Start page: straight to the company picker when a session cookie exists, otherwise to the
+ * login page. The cookie is only a hint; the API decides whether the session is valid.
+ */
+export default async function StartPage() {
+  const store = await cookies();
+  redirect(store.has(SESSION_COOKIE) ? DEFAULT_AFTER_LOGIN : "/login");
 }

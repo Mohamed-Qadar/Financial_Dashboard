@@ -1,0 +1,95 @@
+/*
+ * Design tokens (M2.8a). Light theme only for now; every colour is a variable so a dark
+ * theme can be added later without touching components.
+ * Contrast (WCAG 2.2, measured): text 17.9:1, secondary text 7.6:1, muted text 4.76:1 on
+ * white (use it on --color-surface only), accent 6.7:1, input border 3.46:1,
+ * success 5.2:1, warning 4.8:1, danger 5.9:1 on their soft backgrounds.
+ */
+:root {
+  color-scheme: light;
+
+  /* Neutrals */
+  --color-bg: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f9fafb;
+  --color-border: #e2e8f0;
+  --color-border-strong: #7c8ba1;
+  --color-text: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+
+  /* Accent */
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #1e40af;
+  --color-accent-soft: #eff6ff;
+  --color-on-accent: #ffffff;
+  --color-focus: #2563eb;
+
+  /* Status (text on its soft background) */
+  --color-success: #047857;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fef2f2;
+  --color-info: var(--color-accent);
+  --color-info-soft: var(--color-accent-soft);
+
+  /* Typography: system fonts, nothing downloaded. Somali uses the Latin alphabet. */
+  --font-sans: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.875rem; /* 14px */
+  --text-md: 1rem; /* 16px */
+  --text-lg: 1.25rem; /* 20px */
+  --text-xl: 1.5rem; /* 24px */
+  --text-2xl: 1.875rem; /* 30px */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  /* Spacing (4px grid) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* Shape and depth */
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-dialog: 12px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-md: 0 4px 12px rgb(15 23 42 / 0.08), 0 1px 3px rgb(15 23 42 / 0.06);
+  --focus-ring: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-focus);
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+  --topbar-height: 56px;
+  --content-max-width: 1200px;
+  --control-height: 36px;
+
+  /* Layers */
+  --z-sidebar: 20;
+  --z-topbar: 30;
+  --z-overlay: 40;
+  --z-drawer: 50;
+  --z-menu: 60;
+
+  --duration-fast: 120ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+  }
+}

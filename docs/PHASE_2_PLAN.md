@@ -498,6 +498,16 @@ Rollback: revert; image rebuild.
 ### Milestone 2.8 — Frontend foundations and Phase 2 screens
 Blocked by: D8.
 
+**Split (owner decision, 2026-10-24): M2.8a — ✅ done 2026-10-24 (reviewed and approved)** with the APIs that exist
+(2.2 auth, 2.3a companies): design tokens, Somali/English dictionaries, API client (CSRF,
+company header, error codes), session and company providers, `src/proxy.ts` (Next.js 16
+renamed middleware to proxy) with a per-request CSP nonce and login redirect, login /
+forgot / reset screens, app shell (collapsible sidebar, top bar, company switcher, user
+menu), company picker, company overview, account page (password change), error pages,
+development-only UI preview. Differences from the text below: the active company lives in
+the **URL** (`/c/<companyId>/`, per tab) instead of a cookie; no runtime dependencies;
+registration, branches and members screens wait for 2.3b, 2.5 and 2.6.
+
 Scope / files: `src/lib/api.ts` (fetch wrapper: CSRF token, `X-Company-ID`, error envelope,
 401/403/404 handling), `src/lib/i18n/` (`so.ts`, `en.ts`, typed keys, `Intl` formatters),
 `src/middleware.ts` (redirect unauthenticated users to login), screens: login, register,

@@ -1,30 +1,32 @@
 import type { ApiState, DatabaseState, SystemStatus } from "@/lib/health";
+import type { Messages } from "@/lib/i18n";
 
 type State = ApiState | DatabaseState;
 
-const LABELS: Record<State, string> = {
-  ok: "Operational",
-  error: "Error",
-  unavailable: "Unavailable",
-  unreachable: "Unreachable",
-  unknown: "Unknown",
-};
-
-export function StatusPanel({ status }: { status: SystemStatus }) {
+/** API and database health. Works in server and client components (messages are a prop). */
+export function StatusPanel({
+  status,
+  messages,
+}: {
+  status: SystemStatus;
+  messages: Messages["status"];
+}) {
   const rows: { name: string; state: State }[] = [
-    { name: "API", state: status.api },
-    { name: "Database", state: status.database },
+    { name: messages.api, state: status.api },
+    { name: messages.database, state: status.database },
   ];
 
   return (
-    <section className="status-panel" aria-labelledby="system-status-heading">
-      <h2 id="system-status-heading">System status</h2>
-      <ul>
+    <section className="ui-status" aria-labelledby="system-status-heading">
+      <h2 id="system-status-heading" className="ui-card-title">
+        {messages.title}
+      </h2>
+      <ul className="ui-status-list" role="list">
         {rows.map((row) => (
           <li key={row.name}>
             <span>{row.name}</span>
-            <span className={`badge ${row.state === "ok" ? "badge-ok" : "badge-problem"}`}>
-              {LABELS[row.state]}
+            <span className="ui-badge" data-tone={row.state === "ok" ? "success" : "danger"}>
+              {messages.states[row.state]}
             </span>
           </li>
         ))}

@@ -155,27 +155,52 @@ Stored as UTC (`timestamptz`, `USE_TZ=True`). Business dates (invoice date, post
 `date` columns interpreted in the company's timezone (default `Africa/Mogadishu`).
 
 ### 3.7 Localization
-Backend: Django i18n for messages and error text (`so`, `en`). Frontend: message catalogs per
-locale. Planned for Phase 2+ alongside the first real screens; Phase 1 ships English only.
+Backend: Django i18n for messages and error text (`so`, `en`), milestone 2.7. Frontend (M2.8a):
+typed dictionaries `frontend/src/lib/i18n/messages/{en,so}.ts`, Somali by default, the choice
+kept in the `erp_lang` cookie (no locale in the URL). Errors are shown by backend error
+*code*, so the UI is localized even while backend messages are English. Somali drafts are
+marked "needs review" (decision D12). Somali month/country/currency names come from the
+frontend's own table: Chrome ships no Somali locale data, so `Intl` would answer in English.
 
 ### 3.8 Files
 Attachments stored outside the DB (local volume in development, S3-compatible object storage
 in production), referenced by a DB row that carries `tenant_id`. Served only through
 authorized endpoints or short-lived signed URLs.
 
-## 4. Frontend
+## 4. Frontend (milestone 2.8a)
 
 ```
 frontend/src/
-├── app/          # Next.js App Router routes
-├── components/   # presentational components
-└── lib/          # API client, formatting, types
+├── proxy.ts            # Next.js 16 proxy (formerly middleware): CSP nonce, login redirect
+├── app/
+│   ├── (auth)/         # login, forgot-password, reset-password (public)
+│   ├── (app)/          # select-company, c/[companyId]/…, account (session required)
+│   ├── ui-preview/     # component gallery, development only (404 elsewhere)
+│   ├── not-found.tsx, error.tsx
+├── components/
+│   ├── ui/             # Button, Field, Alert, Card, Menu, States (empty/error/loading), Icon
+│   ├── shell/          # AppShell (sidebar, top bar), CompanySwitcher, UserMenu
+│   ├── auth/, company/, account/
+├── lib/
+│   ├── api/            # client (CSRF, X-Company-ID, error envelope), endpoints, types
+│   ├── i18n/           # dictionaries, LocaleProvider, server locale
+│   ├── session/, company/  # SessionProvider, CompanyProvider
+│   ├── redirects.ts, security.ts, format.ts
+├── styles/             # tokens.css, base.css, components.css, layout.css
+└── dev/                # preview data (development gallery only)
 ```
 
-- TypeScript strict mode.
-- Data fetching through a single API client that adds the tenant header and handles the error format.
-- API types generated from the OpenAPI schema (from Phase 2).
-- Tests with Vitest + Testing Library.
+- TypeScript strict mode; no runtime dependencies beyond Next.js and React.
+- **Active company in the URL**: `/c/<companyId>/…`, one per browser tab. The id is sent as
+  `X-Company-ID` and verified by the server on every request; the frontend stores nothing
+  that grants access (a per-tab "last company" only feeds a back link).
+- Authenticated data is fetched in the browser through `lib/api/client.ts` (same-origin
+  `/api/*`, session cookie, `X-CSRFToken` on unsafe requests, `ApiError` by error code).
+- Production screens show only data returned by the API; preview data lives in `src/dev`
+  and a convention test forbids importing it elsewhere.
+- Styling: CSS custom properties (light theme), global stylesheets with `ui-`/`shell-`
+  prefixes and data-attribute states; no inline styles (the CSP forbids them).
+- Tests with Vitest + Testing Library (`fireEvent`; no user-event yet).
 
 ## 5. Environments and tooling
 
