@@ -18,7 +18,6 @@ from apps.accounts.tests.conftest import (
     login,
 )
 from apps.audit.events import AuditEvent, Outcome
-from apps.audit.models import AuditLog
 from apps.audit.services import record_failure_event
 from apps.core.structured_logging import JSONFormatter, RequestIDFilter
 
@@ -135,9 +134,11 @@ def test_failure_event_survives_when_the_failed_operation_rolled_back(user):
 def test_unstorable_failure_event_is_logged_critical_and_response_is_unchanged(api, user, caplog):
     caplog.set_level(logging.CRITICAL, logger="apps.audit")
 
-    with mock.patch.object(
-        AuditLog.objects, "create", side_effect=DatabaseError("audit table unavailable")
-    ):
+    # PostgreSQL error texts can quote the rejected row; none of it may reach the log.
+    leaky_error = DatabaseError(
+        'violates check constraint\nDETAIL:  Failing row contains (203.0.113.7, {"x": "y"}).'
+    )
+    with mock.patch("apps.audit.services._insert", side_effect=leaky_error):
         response = login(api, "hodan@example.com", "Typed-Secret-9")
 
     assert response.status_code == 400
@@ -153,6 +154,10 @@ def test_unstorable_failure_event_is_logged_critical_and_response_is_unchanged(a
     assert json.loads(line)["audit_event"] == "auth.login_failed"
     assert "Typed-Secret-9" not in line
     assert "hodan@example.com" not in line
+    assert record.exc_info is None
+    assert "Failing row" not in line
+    assert "203.0.113.7" not in line
+    assert json.loads(line)["error_type"] == "DatabaseError"
 
 
 def test_programming_errors_in_failure_events_are_not_swallowed(user):

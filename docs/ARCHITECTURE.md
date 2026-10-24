@@ -90,13 +90,17 @@ in Phase 2, because Django cannot cleanly swap `AUTH_USER_MODEL` after the first
 
 ## 3. Cross-cutting design
 
-### 3.1 Tenant context
+### 3.1 Tenant context (milestone 2.3a)
 1. Request is authenticated (session).
-2. The active tenant is taken from the `X-Tenant-ID` header (set by the frontend after the
-   user picks a tenant) and **verified against the user's active membership**.
-3. The tenant is stored on the request and set in PostgreSQL with
-   `set_config('app.tenant_id', <uuid>, true)` inside the request transaction.
-4. All querysets go through tenant-scoped managers/selectors; RLS policies reject anything that slips through.
+2. Company-scoped views inherit `apps.organizations.access.CompanyScopedAPIView`, which opens
+   the view's outermost transaction (`ATOMIC_REQUESTS` stays off).
+3. The active company comes from the `X-Company-ID` header and is **verified on every
+   request** against the user's active membership and the tenant/company status (user stage:
+   `app.user_id`). Failure → the same 404 for every case.
+4. The tenant stage sets `app.tenant_id` (transaction-local) and the view gets
+   `request.tenant`, `request.company`, `request.membership`.
+5. All querysets go through selectors that take them explicitly; RLS policies reject anything
+   that slips through. Error responses roll back; failure audit events are written afterwards.
 
 Full details in [SECURITY.md](SECURITY.md).
 

@@ -4,8 +4,8 @@ A modular, multi-tenant ERP platform for small and medium-sized businesses in So
 sales, purchasing, inventory, double-entry accounting, payments (including mobile money
 recording), USD/SOS multi-currency, and a Somali/English interface.
 
-> **Status:** Phase 1 (project scaffold). There are no business features yet. See the
-> [roadmap](docs/DEVELOPMENT_ROADMAP.md).
+> **Status:** Phase 2 in progress (identity, tenancy, access control). There are no business
+> features yet. See the [roadmap](docs/DEVELOPMENT_ROADMAP.md).
 
 ## Documentation
 
@@ -48,6 +48,11 @@ Authentication API (session cookies + CSRF): `/api/v1/auth/` — `csrf/`, `login
 `me/`, `password/change/`, `password/reset/`, `password/reset/confirm/`. Details and limits in
 [docs/SECURITY.md § 3](docs/SECURITY.md#3-authentication-implemented-in-milestone-22).
 In development, password-reset e-mails are printed to the backend log (`docker compose logs backend`).
+
+Companies (`/api/v1/`): `GET companies/` lists the companies the user may open; company-scoped
+endpoints (`GET company/`, `POST company/select/`) need the `X-Company-ID` header, which the
+server checks against the user's membership on every request
+([docs/SECURITY.md § 2](docs/SECURITY.md#2-tenant-isolation-strategy)).
 
 Database roles: migrations run as the owner role (`POSTGRES_USER`); the web process connects
 as the restricted runtime role (`POSTGRES_APP_USER`), which cannot change the schema or bypass

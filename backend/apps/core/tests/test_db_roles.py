@@ -15,9 +15,6 @@ from apps.core.testing import app_role_connection, as_app_role
 
 APP_ROLE = settings.DATABASE_APP_ROLE
 OWNER_ROLE = settings.DATABASES["default"]["USER"]
-DML = ("SELECT", "INSERT", "UPDATE", "DELETE")
-# Tables the runtime role may only read and append to; each has its own privilege tests.
-APPEND_ONLY_TABLES = {"audit_logs"}
 
 pytestmark = pytest.mark.django_db
 
@@ -44,25 +41,6 @@ def test_app_role_is_not_the_owner_and_owns_nothing():
         [APP_ROLE],
     )
     assert owned == []
-
-
-def test_app_role_has_dml_on_every_application_table():
-    """Covers tables added by later migrations too (default privileges)."""
-    tables = [
-        name
-        for (name,) in _fetchall("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-        if name != "django_migrations" and name not in APPEND_ONLY_TABLES
-    ]
-    assert "users" in tables
-    missing = [
-        f"{table}:{privilege}"
-        for table in tables
-        for privilege in DML
-        if not _fetchall(
-            "SELECT has_table_privilege(%s, %s, %s)", [APP_ROLE, f"public.{table}", privilege]
-        )[0][0]
-    ]
-    assert missing == []
 
 
 def test_app_role_can_only_read_migration_history():

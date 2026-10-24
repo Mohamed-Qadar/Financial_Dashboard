@@ -124,23 +124,27 @@ alternatives are kept for the record.
 - Settings select credentials with `DJANGO_DB_ROLE=app|owner` (default `app`); compose runs
   `migrate` with `owner` and `runserver` with `app`.
 - **RLS in API tests:** inside the tenant context the request transaction runs
-  `SET LOCAL ROLE somali_erp_app`. In production this is a no-op (already that role); in tests
-  (connected as owner) it makes every API test run under RLS. It is **not** a security boundary
-  on an owner connection (see milestone 2.0 notes); production must connect as the runtime role.
+  `SET LOCAL ROLE somali_erp_app` when the connection is not already that role (skipped for
+  the web process); in tests (connected as owner) it makes every API test run under RLS. It
+  is **not** a security boundary on an owner connection (see milestone 2.0 notes); production
+  must connect as the runtime role.
 
 ### 3.2 Request tenant context
 1. Session authentication (DRF `SessionAuthentication`, CSRF enforced).
 2. Header `X-Company-ID` (UUID) identifies the active company. It is **never** taken from the body.
-3. A narrowly scoped `SECURITY DEFINER` SQL function `erp_resolve_company_access(user, company)`
-   (owned by the owner role, fixed `search_path`) returns the company's tenant id only if the
-   user has an active membership and a role assignment covering that company; otherwise NULL.
-   This is the only RLS bypass, it returns a single id, and it is tested for misuse.
-4. Missing header on a company-scoped endpoint → 400 `company_required`; unknown company or no
-   access → **404** (`not_found`, same as a non-existent company, so existence is not revealed).
-5. Inside `transaction.atomic()` (`ATOMIC_REQUESTS=True`): `set_config('app.tenant_id', …, true)`,
-   `set_config('app.user_id', …, true)`, `SET LOCAL ROLE somali_erp_app`.
-6. Views receive `request.tenant`, `request.company`, `request.membership`, and the resolved
-   permission set; querysets come only from selectors that take them explicitly.
+3. ~~A `SECURITY DEFINER` lookup function~~ — **replaced in 2.3a** by a two-stage RLS
+   context without any bypass: a *user stage* (`app.user_id` only; policies show the user's own
+   active memberships and their tenants/companies) resolves the company, then a *tenant
+   stage* (`app.tenant_id` only) runs the request. Reason: with `FORCE ROW LEVEL SECURITY`, a
+   definer function owned by a non-superuser owner sees no rows (measured), so it would work
+   only locally, where the owner is a superuser.
+4. Missing or malformed header on a company-scoped endpoint → 400 `company_required`; unknown
+   company or no access → **404** (`not_found`, same as a non-existent company).
+5. The company-scoped base view opens its own outermost `atomic(durable=True)` (**no**
+   `ATOMIC_REQUESTS`: it would break the durable blocks of rate limiting and failure audit
+   events), runs as the runtime role and sets the stages with `set_config(..., true)`.
+6. Views receive `request.tenant`, `request.company`, `request.membership` (and, from 2.4,
+   the resolved permission set); querysets come only from selectors that take them explicitly.
 
 ### 3.3 RLS policy template
 ```sql
@@ -332,7 +336,26 @@ Rollback: revert; remove dependency; cache table can stay (unused) or be dropped
 ---
 
 ### Milestone 2.3 — Tenancy core, RLS and active company
-Blocked by: D1, D2, D3, D9, D10. (Largest milestone; may be split into 2.3a schema/RLS and 2.3b API if it grows.)
+Blocked by: D1, D2, D3, D9, D10. **Split (owner decision, 2026-10-24):** 2.3a = schema, RLS,
+tenant context, company endpoints; 2.3b = registration (`register_business`, enumeration-safe
+202 response). Separate commits and approvals.
+
+**2.3a — ✅ done 2026-10-24 (reviewed and approved by the owner).** Differences from
+the plan below:
+- No `SECURITY DEFINER` function (two-stage context, see § 3.2); a catalog test forbids them.
+- No `ATOMIC_REQUESTS`; `CompanyScopedAPIView` owns the transaction. Auth views unchanged.
+- No `audit.0002` foreign key (M2.1 decided audit rows keep plain UUIDs); `audit.0002` adds
+  RLS instead: the runtime role never reads platform entries and reads tenant entries only
+  in their tenant's stage. `record_event()` therefore inserts without `RETURNING`.
+- CRITICAL audit-failure log lines no longer include the database error text (it can quote
+  the rejected row: IP address, metadata — measured); they carry the error class and SQLSTATE.
+- `POST /api/v1/company/select/` added to audit company switches; denied access audited and
+  limited to 30/min per user.
+- No tenant `slug`; no `invited_by_id` yet (2.6); no `allow_negative_stock` yet (Phase 3).
+- The runtime role has no `DELETE` on tenancy tables and only `SELECT` on `currencies`;
+  every table's privileges are declared in a matrix test.
+- Migrations: `core.0003_rls_context_functions`, `audit.0002_audit_rls`, `finance.0001`,
+  `tenants.0001`, `organizations.0001`.
 
 Scope / files:
 - New apps: `tenants` (`Tenant`, `Membership`), `organizations` (`Company`, `Branch` model only —

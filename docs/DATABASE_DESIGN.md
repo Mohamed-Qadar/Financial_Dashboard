@@ -22,15 +22,20 @@ Legend below: **PK** primary key, **FK** foreign key, **UQ** unique, **CK** chec
 
 ## 2. Platform and access
 
-### tenants
+Tables of sections 2–3 marked as implemented exist since milestone 2.3a (RLS policies and
+privileges: [SECURITY.md § 2](SECURITY.md#2-tenant-isolation-strategy)).
+
+### tenants (implemented, RLS)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | name | varchar(200) | |
-| slug | varchar(63) UQ | URL-safe identifier |
 | status | varchar(20) | CK in (`active`, `suspended`, `closed`) |
-| default_language | varchar(5) | `so` or `en` |
+| default_language | varchar(5) | CK in (`so`, `en`), default `so` |
 | created_at, updated_at | timestamptz | |
+
+No `slug`: nothing addresses tenants by name, and a globally unique slug would reveal which
+business names exist.
 
 ### users (global — a person can belong to many tenants)
 | Column | Type | Notes |
@@ -44,9 +49,10 @@ Legend below: **PK** primary key, **FK** foreign key, **UQ** unique, **CK** chec
 | is_active, is_staff, is_superuser | bool | `is_staff` = platform operator, not tenant admin |
 | last_login, date_joined | timestamptz | |
 
-### memberships (T)
+### memberships (T, implemented)
 `id`, `tenant_id` FK, `user_id` FK, `status` CK (`invited`, `active`, `disabled`), `is_owner` bool,
-`invited_by_id`, timestamps. **UQ (tenant_id, user_id).** At least one active owner per tenant (service rule).
+timestamps. **UQ (tenant_id, user_id), UQ (tenant_id, id).** Index (user_id, status).
+`invited_by_id` arrives with invitations (2.6). At least one active owner per tenant (service rule).
 
 ### permissions (global catalog, seeded by migrations)
 `id`, `code` UQ (e.g. `sales.invoice.post`), `module`, `description`.
@@ -64,7 +70,7 @@ Accountant, Cashier, Storekeeper). **UQ (tenant_id, name).**
 
 ## 3. Organization
 
-### companies (T)
+### companies (T, implemented)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | **UQ (tenant_id, id)** for composite FKs |
@@ -76,12 +82,14 @@ Accountant, Cashier, Storekeeper). **UQ (tenant_id, name).**
 | tax_id | varchar(50) NULL | |
 | timezone | varchar(50) | default `Africa/Mogadishu` |
 | fiscal_year_start_month | smallint | CK 1–12 |
-| allow_negative_stock | bool | default false |
+| allow_negative_stock | bool | default false (added with inventory, Phase 3) |
 | is_active | bool | |
 
-### branches (T)
-`id`, `tenant_id`, `company_id` FK, `code`, `name`, `address`, `phone`, `is_active`.
-**UQ (company_id, code).**
+### branches (T, implemented)
+`id`, `tenant_id`, `company_id` FK, `code`, `name`, `address`, `phone`, `is_active`, timestamps.
+**UQ (company_id, code), UQ (tenant_id, id), UQ (company_id, id).** Composite FK
+`(tenant_id, company_id) → companies (tenant_id, id)` (`branches_company_same_tenant_fk`,
+immediate, `ON DELETE RESTRICT`).
 
 ### warehouses (T)
 `id`, `tenant_id`, `company_id` FK, `branch_id` FK NULL, `code`, `name`, `is_active`.
@@ -89,7 +97,7 @@ Accountant, Cashier, Storekeeper). **UQ (tenant_id, name).**
 
 ## 4. Master data
 
-### currencies (global reference)
+### currencies (global reference, implemented; read-only for the runtime role)
 `code` char(3) PK, `name`, `symbol`, `minor_units` smallint CK 0–4. Seeded with `USD`, `SOS`
 (and others on request, see open decisions on Somaliland shilling).
 

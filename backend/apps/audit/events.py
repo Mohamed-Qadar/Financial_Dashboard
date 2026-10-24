@@ -35,6 +35,13 @@ class AuditEvent(models.TextChoices):
     )
     PASSWORD_RESET_COMPLETED = "auth.password_reset_completed", "Password reset completed"
     PASSWORD_RESET_FAILED = "auth.password_reset_failed", "Password reset failed"
+    # Tenancy (milestone 2.3a)
+    COMPANY_SELECTED = "tenancy.company_selected", "Active company selected"
+    COMPANY_ACCESS_DENIED = "tenancy.company_access_denied", "Company access denied"
+    COMPANY_ACCESS_THROTTLED = (
+        "tenancy.company_access_throttled",
+        "Denied company access attempts rate-limited",
+    )
 
 
 class Outcome(models.TextChoices):

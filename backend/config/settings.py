@@ -49,6 +49,9 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.accounts",
     "apps.audit",
+    "apps.finance",
+    "apps.tenants",
+    "apps.organizations",
 ]
 
 MIDDLEWARE = [
@@ -119,6 +122,10 @@ DATABASES = {
         "PORT": env("POSTGRES_PORT", "5432"),
         "CONN_MAX_AGE": int(env("POSTGRES_CONN_MAX_AGE", "60")),
         "CONN_HEALTH_CHECKS": True,
+        # Deliberately off: company-scoped views open their own outermost transaction
+        # (atomic(durable=True)) and record failure events after it rolled back. A request-wide
+        # transaction would make those durable blocks fail (test_company_transactions.py).
+        "ATOMIC_REQUESTS": False,
         "OPTIONS": {"connect_timeout": 5},
     }
 }

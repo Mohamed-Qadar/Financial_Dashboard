@@ -21,12 +21,29 @@ Chosen over schema-per-tenant or database-per-tenant because migrations, connect
 reporting and operations stay simple for a small team. Isolation is enforced in four layers,
 so a single bug does not become a data leak:
 
-### Layer 1 — Request tenant resolution
-- The active tenant comes from the `X-Tenant-ID` header and is accepted **only if** the
-  authenticated user has an `active` membership in it. Otherwise: `403`.
-- The tenant is attached to the request object; it is never read from request bodies.
-- Platform staff access to tenant data (support) requires an explicit, audited
+### Layer 1 — Request tenant resolution (implemented in milestone 2.3a)
+Tenant → companies → branches (decision D1). The client names the **active company** in the
+`X-Company-ID` header on every request; the server derives the tenant from it.
+- The header is a *selector*, not a credential. Every request to a company-scoped view
+  (`apps.organizations.access.CompanyScopedAPIView`) checks, after authentication: active
+  user, **active membership** in the company's tenant, tenant `active`, company `is_active`.
+  Nothing about the choice is stored in the session, so stale session state cannot grant
+  access; a disabled membership or suspended tenant takes effect on the next request.
+  A frontend cookie that remembers the choice (2.8) is only a convenience.
+- Missing header, or anything but one canonical UUID → 400 `company_required` (value not
+  echoed). Unknown company, another tenant's company, inactive company, disabled membership
+  and suspended tenant all answer the **same 404** `not_found`, so existence is not revealed.
+- The company is never taken from the body or query string; such fields are ignored.
+- Denied attempts are audited (`tenancy.company_access_denied`, no tenant, target = the
+  requested id) and limited to 30 per minute per user (then 429 `throttled`, audited once per
+  window). Only denials count, keyed by the user: probing slows down only the prober.
+- `POST /api/v1/company/select/` records a company switch (`tenancy.company_selected`). It is
+  not needed for access: each request is authorized on its own.
+- In 2.3 an active membership grants every active company of its tenant; roles (2.4) narrow
+  this. Platform staff access to tenant data (support) will require an explicit, audited
   "support session"; it is not a side effect of `is_staff`.
+- A test enumerates every URL and fails if a project view is neither company-scoped nor on an
+  explicit list of views that work without a company (`tests/test_conventions.py`).
 
 ### Layer 2 — Application query scoping
 - Tenant-owned models inherit `TenantOwnedModel`; their default manager is not used for API
@@ -45,8 +62,9 @@ so a single bug does not become a data leak:
     Docker it is a superuser (image default); in production it must not be.
   - Runtime (`POSTGRES_APP_USER`, default `somali_erp_app`) — used by Django by default
     (`DJANGO_DB_ROLE` defaults to `app`). `NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE
-    NOREPLICATION`, owns nothing, DML only, `django_migrations` read-only; later
-    `audit_logs`: `INSERT, SELECT` only.
+    NOREPLICATION`, owns nothing, DML only, `django_migrations` read-only, `audit_logs`
+    `INSERT, SELECT` only, `currencies` `SELECT` only, no `DELETE` on `tenants`,
+    `memberships`, `companies`, `branches` (archived, never deleted).
   - `manage.py ensure_db_roles` (run as owner, idempotent) creates/updates the runtime role,
     sets its password from the environment and re-asserts the restricted attributes.
     Migration `core.0001_app_role_grants` grants privileges and sets default privileges so
@@ -56,22 +74,52 @@ so a single bug does not become a data leak:
     privilege-escalation tests log in as the runtime role for real. For the same reason the
     web process must always **connect** as the runtime role; switching roles on an owner
     connection is not a security boundary.
-- Every tenant-owned table: `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` with
+- Every tenant-owned table (`TenantOwnedModel`) and `tenants`: `ENABLE` and `FORCE ROW LEVEL
+  SECURITY` with the policy below (migration helpers in `apps/core/rls.py`):
 
 ```sql
-CREATE POLICY tenant_isolation ON invoices
-  USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+-- core.0003: '' (a setting after its transaction ended) and unset both become NULL
+CREATE FUNCTION app_current_tenant_id() RETURNS uuid LANGUAGE sql STABLE
+  AS $$ SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid $$;
+
+CREATE POLICY tenant_isolation ON companies
+  USING      (companies.tenant_id = app_current_tenant_id())
+  WITH CHECK (companies.tenant_id = app_current_tenant_id());
 ```
 
-- Django sets the value per request **inside the request transaction**:
-  `SELECT set_config('app.tenant_id', %s, true)` (transaction-local, so pooled connections
-  cannot carry it into the next request).
-- If the setting is missing, `current_setting(..., true)` is NULL and the policy matches no
-  rows: the system **fails closed**.
-- Cross-tenant tables needed before a tenant is known (`users`, `memberships` lookup at login,
-  `permissions`, `currencies`) have dedicated policies or no tenant data.
-- Background jobs and management commands must set the tenant explicitly per unit of work.
+- **Two stages, never combined** (`apps/core/tenancy.py`), both transaction-local
+  (`set_config(..., true)`):
+  - *User stage* (`app.user_id` only) — resolving the active company and listing companies.
+    Extra `SELECT`-only policies show the user's own **active** memberships and the
+    tenants/companies those memberships belong to; no branches, no audit rows, no writes.
+  - *Tenant stage* (`app.tenant_id` only) — the request's work: every row of that tenant.
+  Policy subqueries qualify columns with the table name; an unqualified `tenant_id` inside
+  `EXISTS (SELECT … FROM memberships m …)` would bind to `m.tenant_id` and match every tenant
+  (caught during development; tests cover both directions).
+- **No `SECURITY DEFINER` functions.** Nothing runs with the owner's rights to look across
+  tenants (a catalog test enforces it). With `FORCE ROW LEVEL SECURITY`, a non-superuser
+  owner is itself subject to RLS, so a definer function would see nothing in production while
+  appearing to work locally, where the owner is a superuser.
+- **Transactions.** Company-scoped views run in one outermost transaction
+  (`atomic(durable=True)`); `ATOMIC_REQUESTS` is off. Error responses (≥ 400) roll it back;
+  successful ones clear the context before committing. The context helpers refuse to run
+  outside a transaction and use their own savepoint, because a transaction-local setting
+  survives `RELEASE SAVEPOINT` (measured) but is undone by `ROLLBACK TO`.
+- **Connection reuse and pooling.** Persistent connections (`CONN_MAX_AGE`) are safe: the
+  settings end with each transaction (tested on one connection across tenants). Session-level
+  `SET` is forbidden (a convention test scans the code). A future pooler must run in
+  *transaction* or *session* mode — never *statement* mode — and transaction mode also needs
+  `DISABLE_SERVER_SIDE_CURSORS = True`.
+- If no setting is present, every tenant table returns zero rows: the system **fails closed**.
+- Global tables with no tenant data and no RLS: `users`, `django_session` (needed before a
+  tenant is known; users are only listed through memberships), `currencies` (read-only for
+  the runtime role), `rate_limit_counters` (HMAC keys only).
+- Background jobs and management commands must set the tenant explicitly per unit of work
+  (`tenancy.tenant_context()`).
+- **Not a boundary against arbitrary SQL.** The runtime role can set `app.tenant_id` itself.
+  RLS protects against *application bugs* (a missing filter, a wrong id), not against an
+  attacker who can already run SQL as the runtime role; that is prevented by parameterized
+  queries (ORM) and the other layers. A test documents this limitation explicitly.
 
 ### Layer 4 — Referential integrity
 Composite foreign keys `(tenant_id, x_id) → parent(tenant_id, id)` make it impossible to store
@@ -81,10 +129,16 @@ without RLS, so this closes the gap RLS leaves.)
 ### Isolation tests (mandatory from Phase 2)
 1. API: tenant A user cannot list, read, update, delete, or act on tenant B objects (404).
 2. API: tenant A user cannot reference tenant B IDs in request payloads (400).
-3. API: forged `X-Tenant-ID` for a tenant without membership → 403.
-4. DB: as `erp_app` with `app.tenant_id = A`, `SELECT` on each tenant table returns no B rows; `INSERT` with B's id fails.
-5. DB: as `erp_app` without `app.tenant_id`, tenant tables return zero rows.
-6. A test enumerates all models inheriting `TenantOwnedModel` and fails if any table lacks an RLS policy.
+3. API: `X-Company-ID` of a company without access → 404, identical to an unknown id.
+4. DB (real `somali_erp_app` login): with `app.tenant_id = A`, `SELECT` on each tenant table
+   returns no B rows; `INSERT … RETURNING` works for A rows and fails for B rows, in the user
+   stage and without context; rows cannot be moved to B.
+5. DB: without context, tenant tables return zero rows.
+6. Catalog: every `TenantOwnedModel` table (and `tenants`, `audit_logs`, any table with a
+   `tenant_id` column) enables and forces RLS; every reference between tenant-owned tables
+   has a composite foreign key; no `SECURITY DEFINER` function exists.
+7. Privilege matrix: every table's runtime-role privileges are declared and checked exactly
+   (`apps/core/tests/test_privilege_matrix.py`).
 
 ## 3. Authentication (implemented in milestone 2.2)
 
@@ -235,6 +289,16 @@ Table `audit_logs`, written only through `apps.audit.services.record_event()`.
 
 Not stored on purpose: e-mail addresses, names, user agents, request bodies.
 
+**Row-level security (milestone 2.3a, migration `audit.0002`).** Roles subject to RLS read
+only entries of the tenant stage's tenant; **platform entries (`tenant_id` NULL: logins,
+role maintenance, denied company access) are not readable by the runtime role in any stage**.
+They may be appended only outside a tenant context; tenant entries only for the current
+tenant. PostgreSQL applies read policies to rows returned by `INSERT … RETURNING`, so
+`record_event()` takes the id from the sequence (`nextval`) and the time from
+`statement_timestamp()` and inserts without `RETURNING`. Inside a tenant request, tenant and
+company default to the request's active company. Today no application code reads audit
+entries; the owner reads them for support and tests.
+
 **Transaction rule.** `record_event()` writes on the caller's connection, so an entry commits
 or rolls back together with the operation it describes. A `success` event outside
 `transaction.atomic()` raises an error, so a success can never be recorded for work that later
@@ -251,9 +315,13 @@ transaction raises). Authentication views manage their transactions explicitly; 
   a password-reset e-mail is only sent after its request was audited (the response stays
   202 so a storage failure does not reveal which addresses have accounts).
 - *Failure/denied events* cannot be stored when the audit table itself is unavailable; the
-  event (type, outcome, request ID — no metadata, no personal data) is then written to the
-  application log at **CRITICAL** level by logger `apps.audit` and the client's response is
-  unchanged. Operations must alert on these log lines; they are the only record of the event.
+  event (type, outcome, request ID, error class and SQLSTATE — no metadata, no personal data,
+  **no database error text**, because PostgreSQL messages can quote the rejected row,
+  including its IP address and metadata; measured) is then written to the application log at
+  **CRITICAL** level by logger `apps.audit` and the client's response is unchanged.
+  Operations must alert on these log lines; they are the only record of the event.
+- A failure event of a tenant (e.g. a company selection whose audit write failed) is written
+  after the rollback in that tenant's context, so it keeps its tenant id.
 
 **Immutability controls.**
 1. ORM: `AuditLog.save()` on an existing row, `delete()`, `QuerySet.update/delete/bulk_update` raise.
@@ -291,9 +359,16 @@ All of this is tested, including with a real login as `somali_erp_app`.
 ### 8.4 Known gaps (to be closed in later milestones)
 - Client IPs behind the Next.js proxy are the proxy's address until an edge proxy is deployed
   (see § 3.3).
-- Row-level security on `audit_logs` is added in 2.3, together with tenants (the plan listed
-  it under 2.1; it needs the tenant context to be testable).
 - Alerts on repeated login failures, 5xx spikes and backup failures (Phase 6).
+
+**Must be closed before a pilot or production use:**
+1. Edge reverse proxy that appends the real client address; `DJANGO_TRUSTED_PROXIES` set
+   (otherwise per-IP limits are shared by all users).
+2. Alerting on `apps.audit` CRITICAL log lines (the only record of unstorable failure events).
+3. Real e-mail provider with a background queue (removes the password-reset timing difference).
+4. Decision on account-level lockout abuse (CAPTCHA or e-mail unlock) if the residual risk in
+   § 3.2 is seen in practice.
+5. Production owner role that is not a superuser; web process connects as the runtime role.
 
 ## 9. Supply chain
 - Dependencies pinned (`requirements/*.txt`, `package-lock.json`).

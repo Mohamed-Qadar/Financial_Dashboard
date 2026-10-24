@@ -4,6 +4,10 @@ Rows are written through apps.audit.services.record_event(). They are never upda
 deleted: the ORM refuses it here, the runtime database role has no UPDATE/DELETE/TRUNCATE
 privilege, and a trigger rejects UPDATE/DELETE for every role (see docs/SECURITY.md for what
 an owner or superuser can still do).
+
+Row-level security (migration audit.0002): roles subject to RLS read only rows of the tenant
+stage's tenant, never platform rows (tenant_id NULL); they append platform rows only outside
+a tenant context and tenant rows only for that tenant.
 """
 
 from django.db import models
@@ -70,6 +74,7 @@ class AuditLog(models.Model):
             models.Index(fields=["occurred_at"], name="audit_logs_occurred_idx"),
             models.Index(fields=["event_type", "occurred_at"], name="audit_logs_event_idx"),
             models.Index(fields=["actor_id", "occurred_at"], name="audit_logs_actor_idx"),
+            models.Index(fields=["tenant_id", "occurred_at"], name="audit_logs_tenant_idx"),
         ]
 
     def __str__(self) -> str:

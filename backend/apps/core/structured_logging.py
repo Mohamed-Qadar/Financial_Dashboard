@@ -19,6 +19,8 @@ EXTRA_FIELDS = (
     "audit_event",
     "audit_outcome",
     "audit_request_id",
+    "error_type",
+    "sqlstate",
 )
 
 

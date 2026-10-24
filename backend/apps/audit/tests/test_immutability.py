@@ -11,11 +11,20 @@ from apps.core.testing import app_role_connection
 
 EVENT = AuditEvent.DB_RUNTIME_ROLE_ENSURED
 
+# Like record_event(): id from the sequence, no RETURNING. Row-level security (audit.0002)
+# lets the runtime role append platform entries (tenant_id NULL) but never read them back.
+NEXT_ID_AS_APP = "SELECT nextval(pg_get_serial_sequence('audit_logs', 'id'))"
 INSERT_AS_APP = """
-    INSERT INTO audit_logs (event_type, outcome, actor_type, target_type, target_id, metadata)
-    VALUES (%s, 'failure', 'anonymous', '', '', '{}'::jsonb)
-    RETURNING id
+    INSERT INTO audit_logs (id, event_type, outcome, actor_type, target_type, target_id, metadata)
+    VALUES (%s, %s, 'failure', 'anonymous', '', '', '{}'::jsonb)
 """
+
+
+def _append_as_app(cursor) -> int:
+    cursor.execute(NEXT_ID_AS_APP)
+    [entry_id] = cursor.fetchone()
+    cursor.execute(INSERT_AS_APP, [entry_id, EVENT.value])
+    return entry_id
 
 
 @pytest.fixture
@@ -73,14 +82,30 @@ def test_trigger_blocks_changes_by_the_owner_role(entry, statement):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_runtime_role_can_append_and_read():
+def test_runtime_role_can_append_platform_entries_but_not_read_them():
     with app_role_connection() as conn, conn.cursor() as cursor:
         cursor.execute("SELECT current_user")
         assert cursor.fetchone() == ("somali_erp_app",)
-        cursor.execute(INSERT_AS_APP, [EVENT.value])
-        [new_id] = cursor.fetchone()
-        cursor.execute("SELECT event_type FROM audit_logs WHERE id = %s", [new_id])
-        assert cursor.fetchone() == (EVENT.value,)
+        new_id = _append_as_app(cursor)
+        cursor.execute("SELECT count(*) FROM audit_logs")
+        assert cursor.fetchone() == (0,)
+
+    assert AuditLog.objects.get(pk=new_id).event_type == EVENT  # read as the owner
+
+
+@pytest.mark.django_db(transaction=True)
+def test_runtime_role_cannot_return_platform_entries_from_insert():
+    """PostgreSQL applies read policies to INSERT ... RETURNING (why record_event avoids it)."""
+    with (
+        app_role_connection() as conn,
+        pytest.raises(psycopg.errors.InsufficientPrivilege, match="row-level security"),
+        conn.cursor() as cursor,
+    ):
+        cursor.execute(
+            "INSERT INTO audit_logs (event_type, outcome, actor_type, metadata) "
+            "VALUES (%s, 'failure', 'anonymous', '{}'::jsonb) RETURNING id",
+            [EVENT.value],
+        )
 
 
 @pytest.mark.parametrize(
@@ -104,16 +129,13 @@ def test_runtime_role_can_append_and_read():
 def test_runtime_role_cannot_modify_or_remove_entries(statement):
     with app_role_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute(INSERT_AS_APP, [EVENT.value])
-            [entry_id] = cursor.fetchone()
+            entry_id = _append_as_app(cursor)
 
         params = {"id": entry_id} if "%(id)s" in statement else None
         with pytest.raises(psycopg.errors.InsufficientPrivilege), conn.cursor() as cursor:
             cursor.execute(statement, params)
 
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT outcome FROM audit_logs WHERE id = %s", [entry_id])
-            assert cursor.fetchone() == ("failure",)
+    assert AuditLog.objects.get(pk=entry_id).outcome == Outcome.FAILURE  # read as the owner
 
 
 @pytest.mark.django_db

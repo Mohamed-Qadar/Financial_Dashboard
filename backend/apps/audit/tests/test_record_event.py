@@ -7,13 +7,14 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.core.management import call_command
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.test import RequestFactory
 from django.utils import timezone
 
 from apps.audit.events import ActorType, AuditEvent, Outcome
 from apps.audit.models import AuditLog
-from apps.audit.services import MAX_STRING_LENGTH, REDACTED, record_event
+from apps.audit.services import MAX_STRING_LENGTH, REDACTED, record_event, record_failure_event
+from apps.core import tenancy
 from apps.core.request_id import bind_request_id, unbind_request_id
 
 pytestmark = pytest.mark.django_db
@@ -227,3 +228,66 @@ def test_ensure_db_roles_records_restored_attributes():
 
     entry = AuditLog.objects.get()
     assert entry.metadata["restored_attributes"] == ["createdb"]
+
+
+# --- tenant context and row-level security (milestone 2.3a) ------------------------------
+
+
+class _Tenantish:
+    def __init__(self):
+        self.pk = uuid.uuid4()
+
+
+def _tenant_request(user):
+    request = _request(user)
+    request.tenant, request.company = _Tenantish(), _Tenantish()
+    return request
+
+
+def test_returned_entry_matches_the_stored_row():
+    entry = record_event(EVENT, Outcome.FAILURE, system=True, metadata={"k": "v"})
+
+    stored = AuditLog.objects.get(pk=entry.pk)
+    assert (entry.pk, entry.occurred_at, entry.metadata) == (
+        stored.pk,
+        stored.occurred_at,
+        stored.metadata,
+    )
+    assert entry._state.adding is False  # an update attempt hits the ORM guard
+
+
+def test_tenant_and_company_default_to_the_requests_active_company(user):
+    request = _tenant_request(user)
+
+    entry = record_event(EVENT, Outcome.FAILURE, request=request)
+
+    assert (entry.tenant_id, entry.company_id) == (request.tenant.pk, request.company.pk)
+
+
+def test_explicit_tenant_wins_over_the_request(user):
+    tenant_id = uuid.uuid4()
+
+    entry = record_event(EVENT, Outcome.FAILURE, request=_tenant_request(user), tenant_id=tenant_id)
+
+    assert (entry.tenant_id, entry.company_id) == (tenant_id, None)
+
+
+def test_inside_a_tenant_context_entries_must_belong_to_that_tenant():
+    tenant_id = uuid.uuid4()
+    with transaction.atomic(), tenancy.tenant_context(tenant_id):
+        record_event(EVENT, Outcome.SUCCESS, system=True, tenant_id=tenant_id)
+        for other in (None, uuid.uuid4()):  # platform entry, other tenant
+            with pytest.raises(DatabaseError, match="row-level security"), transaction.atomic():
+                record_event(EVENT, Outcome.SUCCESS, system=True, tenant_id=other)
+
+    assert AuditLog.objects.filter(tenant_id=tenant_id).count() == 1
+
+
+def test_failure_event_of_a_tenant_is_written_in_that_tenants_context(user):
+    request = _tenant_request(user)
+
+    entry = record_failure_event(EVENT, request=request)
+
+    assert entry is not None
+    assert AuditLog.objects.get(pk=entry.pk).tenant_id == request.tenant.pk
+    assert tenancy.current()[:2] == ("", "")

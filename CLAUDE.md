@@ -33,9 +33,15 @@ starting work. The owner communicates in Turkish; code, comments and docs are in
   crashes resolving this dependency tree (`npm ci` from the existing lockfile works on both).
 
 ## Non-negotiable rules
-1. **Tenant isolation**: every tenant-owned row has `tenant_id`; query through tenant-scoped
-   selectors; return 404 for other tenants' objects; add isolation tests for every endpoint.
-   Never rely on frontend filtering. See `docs/SECURITY.md`.
+1. **Tenant isolation**: every tenant-owned row has `tenant_id` (models inherit
+   `apps.tenants.models.TenantOwnedModel`; migrations add RLS and composite FKs with
+   `apps/core/rls.py` in the same migration as the table); company-scoped views inherit
+   `apps.organizations.access.CompanyScopedAPIView`; query through selectors that take the
+   tenant/company explicitly; return 404 for other tenants' objects; add isolation tests for
+   every endpoint. Never rely on frontend filtering or the `X-Company-ID` header alone. Change
+   the database context only through `apps.core.tenancy`. No `SECURITY DEFINER` functions.
+   Declare each new table's runtime privileges in `apps/core/tests/test_privilege_matrix.py`.
+   See `docs/SECURITY.md`.
 2. **Money**: `Decimal` / `DecimalField` only. No `float`, no `FloatField` (a test enforces this).
 3. **Double entry**: posted journal entries balance (sum debit = sum credit).
 4. **Immutability**: posted documents and entries are never edited or deleted — use
