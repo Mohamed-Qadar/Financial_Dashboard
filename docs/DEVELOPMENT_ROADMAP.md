@@ -7,7 +7,7 @@ locally. The roadmap is a plan, not proof of progress; status is updated as phas
 |---|---|---|
 | 0 | Requirements, architecture, database design, security plan, conventions | Done (draft v0.1) |
 | 1 | Scaffold, Docker environment, health checks, test & lint tooling, CI | Done (local) |
-| 2 | Auth, tenants, companies/branches, roles/permissions, tenant isolation | Not started |
+| 2 | Auth, tenants, companies/branches, roles/permissions, tenant isolation | In progress — plan in [PHASE_2_PLAN.md](PHASE_2_PLAN.md) |
 | 3 | Contacts, products, units, warehouses, stock movements | Not started |
 | 4 | Sales, purchases, invoices/bills, payment recording | Not started |
 | 5 | Double-entry accounting, posting, trial balance, AR/AP, financial reports | Not started |
@@ -36,23 +36,28 @@ Acceptance criteria:
 - [x] Custom user model (email, UUID) exists before the first migration.
 
 ## Phase 2 — Identity, tenancy and access control
-Scope: custom user model (email login), registration creating tenant + owner membership +
-first company, login/logout/session endpoints, tenant switching, companies/branches CRUD,
-roles/permissions with seeded templates, `TenantOwnedModel`, tenant context, `erp_owner`/`erp_app`
-DB roles, RLS policies, audit log for auth and admin actions, Somali/English i18n plumbing,
-login and tenant-selection screens.
+Detailed milestones, decisions and tests: [PHASE_2_PLAN.md](PHASE_2_PLAN.md).
+
+Scope: email/password authentication, registration creating tenant + owner membership +
+first company (USD) + default branch, login/logout/session endpoints, active-company selection
+(`X-Company-ID`), branches CRUD, members and invitation links, roles/permissions with seeded
+templates, `TenantOwnedModel`, tenant context, separate owner/runtime DB roles, RLS policies,
+composite foreign keys, audit log, Somali/English i18n foundations, login, registration,
+company-picker and branch screens.
 
 Acceptance criteria:
-- Registration creates tenant, owner membership, company, default branch and warehouse in one transaction; failure leaves nothing behind (tested).
+- Registration creates tenant, owner membership, company and default branch in one transaction; failure leaves nothing behind (tested). (Default warehouse moved to Phase 3 — decision D9.)
+- The web process connects with a database role that is not a superuser and cannot bypass RLS (tested).
 - Login rate limiting triggers after N failures (tested). Session cookie is HttpOnly; CSRF enforced on unsafe methods (tested).
-- Forged `X-Tenant-ID` → 403; another tenant's object → 404; cross-tenant ID in payload → 400 (tested for every endpoint via shared helper).
+- Company without access in `X-Company-ID` → 404; another tenant's object → 404; cross-tenant ID in payload → 400 (tested for every endpoint via shared helper).
 - RLS test suite: app role sees zero rows of other tenants and zero rows when no tenant is set.
 - Test fails if any `TenantOwnedModel` table lacks an RLS policy.
 - Test fails if any API view lacks a declared permission.
 - Every role/membership change is audit-logged.
 
 ## Phase 3 — Master data and inventory
-Scope: contacts, units of measure, product categories, products, warehouses UI, stock movements
+Scope: contacts, units of measure, product categories, products, warehouses (including a
+default warehouse for each existing and new company) and warehouse UI, stock movements
 (receipt, delivery, transfer, adjustment, return), stock ledger, balances, weighted average cost.
 
 Acceptance criteria:
@@ -110,17 +115,17 @@ Decisions that need the product owner's input. Defaults in **bold** are what the
 
 | # | Decision | Default assumed | Needed by |
 |---|---|---|---|
-| 1 | First target region(s): Somalia federal member states, Somaliland, Puntland? Somaliland uses the Somaliland shilling (no ISO code), which affects currency setup. | **USD + SOS; SLSH added as a custom currency if Somaliland is targeted** | Phase 2 |
-| 2 | Default base (functional) currency per company | **USD** | Phase 2 |
+| 1 | First target region(s) | **Decided:** Federal Republic of Somalia; currencies USD and SOS | — |
+| 2 | Default base (functional) currency per company | **Decided:** USD | — |
 | 3 | Show SOS amounts with decimals or as whole shillings? | **Whole shillings in UI (minor units 0), stored as NUMERIC(18,2)** | Phase 4 |
-| 4 | Login identifier: email, phone number, or both | **Email required, phone optional (phone login later)** | Phase 2 |
+| 4 | Login identifier | **Decided:** email + password | — |
 | 5 | Inventory valuation method | **Weighted average cost** (FIFO later if needed) | Phase 3 |
 | 6 | Allow negative stock? | **No, configurable per company** | Phase 3 |
 | 7 | Taxes: which sales tax/VAT rules apply to the first customers? | **Configurable tax rates, no country-specific logic** | Phase 4 |
 | 8 | Fiscal year | **Calendar year (Jan–Dec), configurable** | Phase 5 |
 | 9 | Chart of accounts template for Somali SMEs (who validates it — an accountant?) | **Simple IFRS-for-SMEs-style template** | Phase 5 |
 | 10 | Hosting: cloud region, on-premise for some customers, or both? Connectivity expectations? | **Cloud-hosted SaaS** | Phase 6 |
-| 11 | Who provides and reviews Somali translations? | **Owner reviews; English is source language** | Phase 2 |
+| 11 | Who provides and reviews Somali translations? | **Decided:** Claude drafts, Somali strings marked "needs review" until approved by the owner/reviewer; English is the source language | — |
 | 12 | Pricing / subscription model and trial | Undecided | Phase 7 |
 | 13 | Product name and license (proprietary vs open source) | **Proprietary, private repo** | Before public release |
 | 14 | Git hosting | **Decided:** local Git only; no remote or publishing until the owner approves after the whole project is complete | — |
