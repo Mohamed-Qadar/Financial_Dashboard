@@ -44,6 +44,11 @@ docker compose up --build     # first run builds images and applies migrations
 
 The web app proxies `/api/*` to Django, so `http://localhost:3000/api/v1/health/` works too.
 
+Authentication API (session cookies + CSRF): `/api/v1/auth/` — `csrf/`, `login/`, `logout/`,
+`me/`, `password/change/`, `password/reset/`, `password/reset/confirm/`. Details and limits in
+[docs/SECURITY.md § 3](docs/SECURITY.md#3-authentication-implemented-in-milestone-22).
+In development, password-reset e-mails are printed to the backend log (`docker compose logs backend`).
+
 Database roles: migrations run as the owner role (`POSTGRES_USER`); the web process connects
 as the restricted runtime role (`POSTGRES_APP_USER`), which cannot change the schema or bypass
 row-level security. Startup runs `ensure_db_roles` and `migrate` as the owner automatically.

@@ -59,6 +59,12 @@ def not_found(request: HttpRequest, exception: Exception) -> JsonResponse:
     return JsonResponse(error_payload("not_found", _("Not found.")), status=404)
 
 
+def csrf_failure(request: HttpRequest, reason: str = "") -> JsonResponse:
+    # The reason (e.g. "CSRF cookie not set.") is for logs, not for clients.
+    logger.warning("CSRF verification failed: %s", reason)
+    return JsonResponse(error_payload("csrf_failed", _("CSRF verification failed.")), status=403)
+
+
 def server_error(request: HttpRequest) -> JsonResponse:
     return JsonResponse(
         error_payload("server_error", _("An unexpected error occurred.")), status=500

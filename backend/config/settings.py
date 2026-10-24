@@ -4,6 +4,7 @@ All environment-specific values come from environment variables (see ../.env.exa
 DJANGO_ENV selects behaviour: "development", "test" or "production".
 """
 
+import ipaddress
 import os
 import re
 from pathlib import Path
@@ -14,6 +15,7 @@ from config.env import (
     env,
     env_bool,
     env_list,
+    production_auth_errors,
     production_database_errors,
     production_settings_errors,
 )
@@ -57,6 +59,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.accounts.middleware.AbsoluteSessionLifetimeMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -145,7 +148,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        "apps.accounts.authentication.SessionAuthentication",
     ],
     # Closed by default: every endpoint must deliberately opt out of authentication.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
@@ -167,6 +170,45 @@ SPECTACULAR_SETTINGS = {
         else ["rest_framework.permissions.AllowAny"]
     ),
 }
+
+# --- Authentication (milestone 2.2; docs/SECURITY.md § 3) ---
+# Argon2 first; older hashes still verify and are upgraded on the next successful login.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.ScryptPasswordHasher",
+]
+# Idle timeout: 12 hours, refreshed by every request. Absolute limit: 7 days after login,
+# enforced by apps.accounts.middleware.AbsoluteSessionLifetimeMiddleware.
+SESSION_COOKIE_AGE = 12 * 60 * 60
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_ABSOLUTE_MAX_AGE = 7 * 24 * 60 * 60
+PASSWORD_RESET_TIMEOUT = 60 * 60
+CSRF_FAILURE_VIEW = "apps.core.views.csrf_failure"
+
+FRONTEND_BASE_URL = env("DJANGO_FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
+# Development prints e-mails (including reset links) to the log; production must not.
+EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", "Somali ERP <no-reply@localhost>")
+
+# Proxies whose X-Forwarded-For is believed (CIDR list). Empty = trust none. The Next.js
+# rewrite proxy must NOT be listed on its own: it forwards client-supplied headers unchanged.
+try:
+    TRUSTED_PROXIES = [
+        ipaddress.ip_network(cidr, strict=False) for cidr in env_list("DJANGO_TRUSTED_PROXIES")
+    ]
+except ValueError as exc:
+    raise ImproperlyConfigured(f"DJANGO_TRUSTED_PROXIES: {exc}") from exc
+
+if IS_PRODUCTION:
+    errors = production_auth_errors(
+        email_backend=EMAIL_BACKEND,
+        trusted_proxies_configured="DJANGO_TRUSTED_PROXIES" in os.environ,
+        frontend_base_url=FRONTEND_BASE_URL,
+    )
+    if errors:
+        raise ImproperlyConfigured("Unsafe production settings: " + " ".join(errors))
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"

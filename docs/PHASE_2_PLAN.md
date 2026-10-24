@@ -280,7 +280,23 @@ Rollback: revert + `migrate audit zero` (drops the table; dev audit rows lost �
 
 ---
 
-### Milestone 2.2 — Authentication API
+### Milestone 2.2 — Authentication API — ✅ done 2026-10-24
+
+Implementation notes (differences from the plan; approved conditions in brackets):
+- Rate limiting uses an own table `rate_limit_counters` with atomic `INSERT … ON CONFLICT …
+  RETURNING` (migration `core.0002`) instead of Django's DB cache, whose `incr` is not atomic
+  under concurrency [condition 7]. No `createcachetable`.
+- Per-account login limits are keyed by account **and** IP, plus a 100/h account-wide cap;
+  checks stop at the first exceeded limit [condition 7: lockout DoS].
+- Extra limits: password change 5/min + 20/h per user; reset confirm 20/h per IP.
+- Next.js proxy measured: it forwards client X-Forwarded-For/X-Real-IP unchanged and adds
+  nothing, so proxy trust stays **off**; production must set `DJANGO_TRUSTED_PROXIES`
+  explicitly [condition 5].
+- Success + audit share one `atomic(durable=True)`; failures recorded after rollback with
+  `record_failure_event()`; unstorable failure events go to the CRITICAL log [conditions 1, 6].
+- Production startup also requires a real e-mail backend and an https frontend URL.
+- No manual test account was created; all verification used automated test users
+  [condition 2].
 Blocked by: D4, D5, D6 (`argon2-cffi`), D11.
 
 Scope / files: `apps/accounts/` `serializers.py`, `views.py`, `urls.py`, `services.py`

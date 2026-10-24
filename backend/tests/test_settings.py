@@ -88,6 +88,9 @@ PRODUCTION = {
     "DJANGO_SECRET_KEY": STRONG_KEY,
     "DJANGO_ALLOWED_HOSTS": "erp.example.com",
     "POSTGRES_APP_PASSWORD": STRONG_DB_PASSWORD,
+    "DJANGO_EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+    "DJANGO_TRUSTED_PROXIES": "",
+    "DJANGO_FRONTEND_BASE_URL": "https://erp.example.com",
 }
 
 
@@ -143,3 +146,27 @@ def test_invalid_database_role_configuration_is_rejected(overrides, remove, mess
     result = _load_settings_in_subprocess(remove=remove, **overrides)
     assert result.returncode != 0
     assert message in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("overrides", "remove", "message"),
+    [
+        (
+            {"DJANGO_EMAIL_BACKEND": "django.core.mail.backends.console.EmailBackend"},
+            [],
+            "DJANGO_EMAIL_BACKEND must deliver e-mail",
+        ),
+        ({}, ["DJANGO_TRUSTED_PROXIES"], "DJANGO_TRUSTED_PROXIES must be set explicitly"),
+        ({"DJANGO_FRONTEND_BASE_URL": "http://erp.example.com"}, [], "must use https://"),
+    ],
+)
+def test_production_startup_refuses_unsafe_auth_settings(overrides, remove, message):
+    result = _load_settings_in_subprocess(remove=remove, **{**PRODUCTION, **overrides})
+    assert result.returncode != 0
+    assert message in result.stderr
+
+
+def test_invalid_trusted_proxy_network_is_rejected():
+    result = _load_settings_in_subprocess(DJANGO_TRUSTED_PROXIES="10.0.0.0/8,not-a-network")
+    assert result.returncode != 0
+    assert "DJANGO_TRUSTED_PROXIES" in result.stderr

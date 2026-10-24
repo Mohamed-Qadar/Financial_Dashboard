@@ -3,19 +3,25 @@
 Transaction rule: record_event() writes on the caller's database connection, so the entry
 commits or rolls back together with the operation it describes. A SUCCESS event therefore
 must be recorded inside the operation's transaction (``transaction.atomic()``); recording one
-in autocommit mode raises, because the event could outlive a failed operation. FAILURE and
-DENIED events may be recorded outside a transaction (after the failed work rolled back).
+in autocommit mode raises, because the event could outlive a failed operation.
+
+FAILURE and DENIED events are recorded with record_failure_event(), after the failed work has
+rolled back, in their own outermost transaction. If that write fails, the event is written to
+the application log at CRITICAL level instead of being dropped.
 """
 
-import ipaddress
 import json
+import logging
 from typing import Any
 
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 
 from apps.audit.events import ActorType, AuditEvent, Outcome
 from apps.audit.models import AuditLog
+from apps.core.client_ip import client_ip
 from apps.core.request_id import current_request_id
+
+logger = logging.getLogger("apps.audit")
 
 REDACTED = "[redacted]"
 # Metadata keys containing any of these fragments (case-insensitive) are never stored.
@@ -58,17 +64,6 @@ def sanitize_metadata(value: Any) -> Any:
     if len(text) > MAX_STRING_LENGTH:
         return text[:MAX_STRING_LENGTH] + "…"
     return text
-
-
-def _client_ip(request) -> str | None:
-    # REMOTE_ADDR only. Behind the Next.js proxy this is the proxy's address; trusted
-    # X-Forwarded-For handling is added with authentication (milestone 2.2).
-    if request is None:
-        return None
-    try:
-        return str(ipaddress.ip_address(request.META.get("REMOTE_ADDR", "")))
-    except ValueError:
-        return None
 
 
 def _resolve_actor(request, actor, system: bool) -> tuple[str, Any]:
@@ -119,6 +114,37 @@ def record_event(
         target_type=target_type,
         target_id=str(target_id)[:MAX_TARGET_ID_LENGTH],
         request_id=getattr(request, "request_id", None) or current_request_id(),
-        ip_address=_client_ip(request),
+        ip_address=client_ip(request),
         metadata=clean_metadata,
     )
+
+
+def record_failure_event(
+    event: AuditEvent | str,
+    outcome: Outcome | str = Outcome.FAILURE,
+    **kwargs: Any,
+) -> AuditLog | None:
+    """Record a FAILURE/DENIED event after the failed operation's transaction rolled back.
+
+    Runs in its own outermost transaction: calling it inside another transaction raises
+    RuntimeError, because the event would be lost if that transaction rolled back.
+    If the database cannot store the event, it is logged at CRITICAL level (without metadata,
+    which may contain identifiers) and None is returned; the caller's response is unchanged.
+    """
+    if Outcome(outcome) == Outcome.SUCCESS:
+        raise ValueError("Use record_event() inside the operation's transaction for successes.")
+    request = kwargs.get("request")
+    try:
+        with transaction.atomic(durable=True):
+            return record_event(event, outcome, **kwargs)
+    except DatabaseError:
+        logger.critical(
+            "audit event could not be stored",
+            extra={
+                "audit_event": str(AuditEvent(event)),
+                "audit_outcome": str(Outcome(outcome)),
+                "audit_request_id": getattr(request, "request_id", None) or current_request_id(),
+            },
+            exc_info=True,
+        )
+        return None

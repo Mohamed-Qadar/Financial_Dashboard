@@ -10,11 +10,20 @@ from typing import Any
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy as _lazy
 from rest_framework import exceptions
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
 from apps.core.request_id import current_request_id
+
+
+class ServiceUnavailable(exceptions.APIException):
+    """A required dependency (e.g. the audit log) failed; the operation was not performed."""
+
+    status_code = 503
+    default_detail = _lazy("The service is temporarily unavailable. Please try again.")
+    default_code = "service_unavailable"
 
 
 def error_payload(code: str, message: str, details: Any = None) -> dict[str, Any]:

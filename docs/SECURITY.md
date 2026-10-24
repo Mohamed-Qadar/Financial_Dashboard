@@ -86,17 +86,82 @@ without RLS, so this closes the gap RLS leaves.)
 5. DB: as `erp_app` without `app.tenant_id`, tenant tables return zero rows.
 6. A test enumerates all models inheriting `TenantOwnedModel` and fails if any table lacks an RLS policy.
 
-## 3. Authentication
+## 3. Authentication (implemented in milestone 2.2)
 
-- **Session cookies** (Django sessions) for the first-party web UI: `HttpOnly`, `Secure` (prod),
-  `SameSite=Lax`, rotated on login, idle timeout (e.g. 12 h) and absolute timeout.
-- Browser calls go to the Next.js origin, which proxies `/api/*` to Django, so cookies are first-party.
-- CSRF protection on all unsafe methods (Django CSRF token, sent as header by the API client).
-- Passwords: Argon2 hasher, Django password validators, minimum length 10.
-- Login and password-reset endpoints rate-limited per IP and per account; generic error
-  messages ("invalid credentials") to avoid account enumeration.
-- Optional TOTP 2FA for owners/accountants (Phase 6).
-- API tokens for integrations (Phase 7) are scoped, hashed at rest, revocable, and tenant-bound.
+### 3.1 Endpoints (`/api/v1/auth/`)
+| Endpoint | Access | Behaviour |
+|---|---|---|
+| `GET csrf/` | anyone | Sets the `csrftoken` cookie (readable by JS, `SameSite=Lax`); 204 |
+| `POST login/` | anyone, CSRF | Email + password → session; 200 with the user; 400 `invalid_credentials` |
+| `POST logout/` | anyone, CSRF | Ends the session; always 204 |
+| `GET me/` | session | Current user |
+| `POST password/change/` | session, CSRF | Current + new password; 204 |
+| `POST password/reset/` | anyone, CSRF | Always 202 (unless rate-limited) |
+| `POST password/reset/confirm/` | anyone, CSRF | uid + token + new password; 204; 400 `invalid_reset_link` |
+
+### 3.2 Controls
+- **Sessions:** Django database sessions; cookie `HttpOnly`, `SameSite=Lax`, `Secure` in
+  production. Idle timeout 12 h, refreshed on every request (`SESSION_SAVE_EVERY_REQUEST`).
+  Absolute limit 7 days after login (`AbsoluteSessionLifetimeMiddleware`; sessions without a
+  login time count as expired). The session key is rotated at login (session fixation).
+- **CSRF:** every unsafe request needs the `X-CSRFToken` header matching the cookie, and a
+  matching `Origin` when the browser sends one. Login, logout and password-reset views use
+  `csrf_protect` explicitly, because DRF only checks CSRF for authenticated sessions (login
+  CSRF). Failures answer 403 `csrf_failed` in the standard error format.
+- **Passwords:** Argon2id (Django's `Argon2PasswordHasher`) first; PBKDF2/scrypt hashes still
+  verify and are upgraded at the next login. Validators: similarity, minimum length 10, common
+  passwords, all-numeric. Passwords longer than 1024 characters are rejected before hashing.
+- **No account enumeration:** unknown email, wrong password and inactive account give the
+  same 400 body; Django hashes a dummy password for unknown users so timings are similar.
+  Password reset always answers 202. *Limitation:* for an existing account the reset request
+  also writes an audit entry and sends e-mail synchronously, so it is measurably slower; a
+  background e-mail queue (later) removes this timing difference.
+- **Password change:** requires the current password. The current session continues under a
+  new session key; every other session of the user is rejected on its next request (the
+  session's password hash no longer matches).
+- **Password reset:** Django's signed tokens, valid for **1 hour**, single use (the token is
+  bound to the password hash and last login, so it dies once used). Links point to
+  `DJANGO_FRONTEND_BASE_URL/reset-password?uid=…&token=…`. A reset also ends every session.
+  Development prints e-mails to the console; production refuses console/file/memory backends.
+- **Rate limits** (atomic PostgreSQL counters, `apps/core/rate_limit.py`; 429 `throttled` with
+  `Retry-After`):
+
+  | Action | Limits |
+  |---|---|
+  | Login | 30/min per IP; 5/min and 20/h per account **and** IP; 100/h per account |
+  | Password change | 5/min and 20/h per user |
+  | Password reset request | 5/h per IP; 3/h per e-mail |
+  | Password reset confirm | 20/h per IP |
+
+  Lockout resistance: per-account limits are keyed by account *and* IP, so failures from one
+  address do not block the owner elsewhere; checks stop at the first exceeded limit, so attempts
+  already rejected per IP never reach the account-wide cap. There is no hard account lockout.
+  *Residual risk:* an attacker with at least five addresses can exhaust the account-wide cap
+  (100/h) and block the account for the rest of the hour; a CAPTCHA or e-mail unlock can be
+  added if this is seen in practice. Fixed windows allow up to twice a limit around a window
+  boundary. Counters store HMAC keys, not e-mail or IP addresses. Throttling is audited once
+  per window, so throttled floods do not flood the audit log.
+- **Planned:** optional TOTP 2FA for owners/accountants (Phase 6); scoped, hashed, revocable,
+  tenant-bound API tokens for integrations (Phase 7).
+
+### 3.3 Client IP addresses
+`apps/core/client_ip.py` returns `REMOTE_ADDR` unless the sender is listed in
+`DJANGO_TRUSTED_PROXIES` (CIDR list, empty = trust none); then `X-Forwarded-For` is read from
+the right and the first untrusted address is the client. Malformed or oversized headers fall
+back to `REMOTE_ADDR`.
+
+**Measured Next.js behaviour (2026-10-24, Next.js 16.4.2 rewrites):** the proxy does **not**
+add the client address to `X-Forwarded-For`, and it forwards client-supplied
+`X-Forwarded-For` and `X-Real-IP` headers unchanged. Trusting the Next.js container would let
+every client choose its IP, so **no proxy is trusted** in development. Consequence: requests
+through Next.js all appear to come from the Next.js container, so the per-IP login limit is
+shared by everyone using the web app in development.
+
+Production requirement before enabling trust: an edge reverse proxy that appends the real
+client address to `X-Forwarded-For`; Next.js and Django reachable only through it; then list
+the edge proxy and the Next.js network in `DJANGO_TRUSTED_PROXIES`. Production startup fails
+unless `DJANGO_TRUSTED_PROXIES` is set explicitly (an empty value is allowed and means "trust
+none").
 
 ## 4. Authorization
 
@@ -174,9 +239,21 @@ Not stored on purpose: e-mail addresses, names, user agents, request bodies.
 or rolls back together with the operation it describes. A `success` event outside
 `transaction.atomic()` raises an error, so a success can never be recorded for work that later
 rolls back. `failure`/`denied` events may be written after the failed work rolled back.
-Recording failures that happen *inside* a request transaction that is rolled back (relevant
-once `ATOMIC_REQUESTS` is enabled in 2.3) needs a separate connection; this is decided with the
-authentication endpoints in 2.2.
+Failure events are written with `record_failure_event()` after the failed work has rolled
+back, in their own outermost transaction (`atomic(durable=True)`; calling it inside an open
+transaction raises). Authentication views manage their transactions explicitly; when
+`ATOMIC_REQUESTS` is enabled in 2.3 they are marked non-atomic.
+
+**If audit storage fails** (milestone 2.2):
+- *Success events* are fail-closed: the operation and its event share a transaction, so a
+  failed audit write rolls the operation back and the client gets 503 `service_unavailable`.
+  Login additionally discards the session, so no unaudited authenticated session can exist;
+  a password-reset e-mail is only sent after its request was audited (the response stays
+  202 so a storage failure does not reveal which addresses have accounts).
+- *Failure/denied events* cannot be stored when the audit table itself is unavailable; the
+  event (type, outcome, request ID — no metadata, no personal data) is then written to the
+  application log at **CRITICAL** level by logger `apps.audit` and the client's response is
+  unchanged. Operations must alert on these log lines; they are the only record of the event.
 
 **Immutability controls.**
 1. ORM: `AuditLog.save()` on an existing row, `delete()`, `QuerySet.update/delete/bulk_update` raise.
@@ -212,8 +289,8 @@ All of this is tested, including with a real login as `somali_erp_app`.
 - Retention and access policy for audit data (who may read it, how long it is kept).
 
 ### 8.4 Known gaps (to be closed in later milestones)
-- `ip_address` is `REMOTE_ADDR`. Requests through the Next.js proxy show the proxy's address;
-  trusted `X-Forwarded-For` handling comes with authentication (2.2).
+- Client IPs behind the Next.js proxy are the proxy's address until an edge proxy is deployed
+  (see § 3.3).
 - Row-level security on `audit_logs` is added in 2.3, together with tenants (the plan listed
   it under 2.1; it needs the tenant context to be testable).
 - Alerts on repeated login failures, 5xx spikes and backup failures (Phase 6).

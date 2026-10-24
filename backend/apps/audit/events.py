@@ -13,6 +13,28 @@ class AuditEvent(models.TextChoices):
         "security.db_runtime_role_ensured",
         "Runtime database role created or updated",
     )
+    # Authentication (milestone 2.2)
+    LOGIN_SUCCEEDED = "auth.login_succeeded", "Login succeeded"
+    LOGIN_FAILED = "auth.login_failed", "Login failed"
+    LOGIN_THROTTLED = "auth.login_throttled", "Login attempts rate-limited"
+    LOGOUT = "auth.logout", "Logout"
+    PASSWORD_CHANGED = "auth.password_changed", "Password changed"
+    PASSWORD_CHANGE_FAILED = "auth.password_change_failed", "Password change failed"
+    PASSWORD_CHANGE_THROTTLED = (
+        "auth.password_change_throttled",
+        "Password change attempts rate-limited",
+    )
+    PASSWORD_RESET_REQUESTED = "auth.password_reset_requested", "Password reset requested"
+    PASSWORD_RESET_THROTTLED = (
+        "auth.password_reset_throttled",
+        "Password reset requests rate-limited",
+    )
+    PASSWORD_RESET_EMAIL_FAILED = (
+        "auth.password_reset_email_failed",
+        "Password reset e-mail could not be sent",
+    )
+    PASSWORD_RESET_COMPLETED = "auth.password_reset_completed", "Password reset completed"
+    PASSWORD_RESET_FAILED = "auth.password_reset_failed", "Password reset failed"
 
 
 class Outcome(models.TextChoices):

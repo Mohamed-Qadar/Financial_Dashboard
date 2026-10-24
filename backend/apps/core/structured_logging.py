@@ -11,7 +11,15 @@ from datetime import UTC, datetime
 from apps.core.request_id import current_request_id
 
 # Attributes passed with ``extra=`` that are copied into the JSON object.
-EXTRA_FIELDS = ("method", "path", "status", "duration_ms")
+EXTRA_FIELDS = (
+    "method",
+    "path",
+    "status",
+    "duration_ms",
+    "audit_event",
+    "audit_outcome",
+    "audit_request_id",
+)
 
 
 class RequestIDFilter(logging.Filter):

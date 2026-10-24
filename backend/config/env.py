@@ -66,3 +66,31 @@ def production_database_errors(*, app_password: str | None) -> list[str]:
             "characters and must not be a development placeholder."
         ]
     return []
+
+
+INSECURE_EMAIL_BACKENDS = (
+    "django.core.mail.backends.console.EmailBackend",
+    "django.core.mail.backends.locmem.EmailBackend",
+    "django.core.mail.backends.filebased.EmailBackend",
+    "django.core.mail.backends.dummy.EmailBackend",
+)
+
+
+def production_auth_errors(
+    *, email_backend: str, trusted_proxies_configured: bool, frontend_base_url: str
+) -> list[str]:
+    """Return the reasons why authentication settings are unsafe for production."""
+    errors = []
+    if email_backend in INSECURE_EMAIL_BACKENDS:
+        errors.append(
+            "DJANGO_EMAIL_BACKEND must deliver e-mail in production; the console/file/memory "
+            "backends would expose password-reset links or drop them."
+        )
+    if not trusted_proxies_configured:
+        errors.append(
+            "DJANGO_TRUSTED_PROXIES must be set explicitly in production (an empty value means "
+            "'trust no proxy'); see docs/SECURITY.md, Client IP addresses."
+        )
+    if not frontend_base_url.startswith("https://"):
+        errors.append("DJANGO_FRONTEND_BASE_URL must use https:// in production.")
+    return errors
