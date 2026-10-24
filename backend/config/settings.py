@@ -4,11 +4,19 @@ All environment-specific values come from environment variables (see ../.env.exa
 DJANGO_ENV selects behaviour: "development", "test" or "production".
 """
 
+import os
+import re
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
-from config.env import env, env_bool, env_list, production_settings_errors
+from config.env import (
+    env,
+    env_bool,
+    env_list,
+    production_database_errors,
+    production_settings_errors,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -67,12 +75,40 @@ TEMPLATES = [
     },
 ]
 
+# Two database roles (see docs/SECURITY.md):
+# - "owner": owns the schema; used for migrations, management commands and creating test databases.
+# - "app":   the web process; not a superuser, cannot bypass row-level security, no DDL.
+# The default is the restricted role, so forgetting the variable never grants owner rights.
+DB_ROLE = env("DJANGO_DB_ROLE", "app")
+if DB_ROLE not in {"app", "owner"}:
+    raise ImproperlyConfigured(f"DJANGO_DB_ROLE must be 'app' or 'owner', got {DB_ROLE!r}.")
+DATABASE_APP_ROLE = env("POSTGRES_APP_USER", "somali_erp_app")
+# The role name is interpolated into GRANT/CREATE ROLE statements; allow only plain identifiers.
+if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", DATABASE_APP_ROLE):
+    raise ImproperlyConfigured("POSTGRES_APP_USER must match [a-z_][a-z0-9_]{0,62}.")
+# Optional for owner-role processes, except ensure_db_roles which sets it on the app role.
+DATABASE_APP_PASSWORD = os.environ.get("POSTGRES_APP_PASSWORD") or None
+if DB_ROLE == "app":
+    if DATABASE_APP_PASSWORD is None:
+        raise ImproperlyConfigured("Environment variable POSTGRES_APP_PASSWORD is required.")
+    _db_user, _db_password = DATABASE_APP_ROLE, DATABASE_APP_PASSWORD
+else:
+    _db_user = env("POSTGRES_USER", required=True)
+    _db_password = env("POSTGRES_PASSWORD", required=True)
+if env("POSTGRES_USER", "") == DATABASE_APP_ROLE:
+    raise ImproperlyConfigured("POSTGRES_APP_USER must be a different role than POSTGRES_USER.")
+
+if IS_PRODUCTION:
+    errors = production_database_errors(app_password=DATABASE_APP_PASSWORD)
+    if errors:
+        raise ImproperlyConfigured("Unsafe production settings: " + " ".join(errors))
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": env("POSTGRES_DB", required=True),
-        "USER": env("POSTGRES_USER", required=True),
-        "PASSWORD": env("POSTGRES_PASSWORD", required=True),
+        "USER": _db_user,
+        "PASSWORD": _db_password,
         "HOST": env("POSTGRES_HOST", "localhost"),
         "PORT": env("POSTGRES_PORT", "5432"),
         "CONN_MAX_AGE": int(env("POSTGRES_CONN_MAX_AGE", "60")),

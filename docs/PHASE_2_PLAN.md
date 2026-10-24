@@ -123,10 +123,10 @@ alternatives are kept for the record.
   `audit_logs`: `INSERT, SELECT` only. `django_migrations`: `SELECT` only.
 - Settings select credentials with `DJANGO_DB_ROLE=app|owner` (default `app`); compose runs
   `migrate` with `owner` and `runserver` with `app`.
-- **Defence in depth for tests and misconfiguration:** inside the tenant context the request
-  transaction runs `SET LOCAL ROLE somali_erp_app`. In production this is a no-op (already that
-  role); in tests (connected as owner) it makes every API test run under RLS. The role and
-  settings are reset when the request transaction ends.
+- **RLS in API tests:** inside the tenant context the request transaction runs
+  `SET LOCAL ROLE somali_erp_app`. In production this is a no-op (already that role); in tests
+  (connected as owner) it makes every API test run under RLS. It is **not** a security boundary
+  on an owner connection (see milestone 2.0 notes); production must connect as the runtime role.
 
 ### 3.2 Request tenant context
 1. Session authentication (DRF `SessionAuthentication`, CSRF enforced).
@@ -190,7 +190,17 @@ Order and dependencies:
 
 ---
 
-### Milestone 2.0 — Database role separation (smallest secure milestone) ★ start here
+### Milestone 2.0 — Database role separation (smallest secure milestone) — ✅ done 2026-10-24
+
+Implementation notes (differences from the plan):
+- Role names: owner `somali_erp` (existing), runtime `somali_erp_app`.
+- The migration also creates the runtime role as `NOLOGIN` when it does not exist, so a fresh
+  database (CI, new developer) can migrate before `ensure_db_roles` runs.
+- `SET LOCAL ROLE` on an owner connection was found **not** to stop a switch back to the owner
+  (PostgreSQL checks `SET ROLE` against the session user). Escalation tests therefore log in as
+  the runtime role; section 3.1's "defence in depth" switch is only a test aid, and production
+  safety relies on connecting as the runtime role (now the default).
+- Tests use `config.test_settings` (owner role) so pytest can create the test database.
 **Why first:** without it, every later RLS policy is bypassed by the superuser connection.
 No business tables, no API change, no new dependency.
 

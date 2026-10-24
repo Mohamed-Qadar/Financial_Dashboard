@@ -7,8 +7,9 @@ import os
 
 from django.core.exceptions import ImproperlyConfigured
 
-INSECURE_SECRET_PREFIXES = ("django-insecure", "dev-only", "change-me")
+INSECURE_SECRET_PREFIXES = ("django-insecure", "dev-only", "change-me", "ci-only")
 MIN_SECRET_KEY_LENGTH = 50
+MIN_DB_PASSWORD_LENGTH = 16
 
 
 def env(name: str, default: str | None = None, *, required: bool = False) -> str:
@@ -51,3 +52,17 @@ def production_settings_errors(
     if not allowed_hosts or "*" in allowed_hosts:
         errors.append("DJANGO_ALLOWED_HOSTS must list explicit host names in production.")
     return errors
+
+
+def production_database_errors(*, app_password: str | None) -> list[str]:
+    """Return the reasons why the runtime database password is unsafe for production."""
+    if app_password is None:
+        return []  # Owner-role processes (migrations) may run without the runtime password.
+    if len(app_password) < MIN_DB_PASSWORD_LENGTH or app_password.lower().startswith(
+        INSECURE_SECRET_PREFIXES
+    ):
+        return [
+            f"POSTGRES_APP_PASSWORD must be a random value of at least {MIN_DB_PASSWORD_LENGTH} "
+            "characters and must not be a development placeholder."
+        ]
+    return []

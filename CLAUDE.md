@@ -22,7 +22,11 @@ starting work. The owner communicates in Turkish; code, comments and docs are in
 - Start: `docker compose up -d` (needs `.env`, copy from `.env.example`)
 - Backend tests: `docker compose run --rm backend pytest`
 - Backend lint/format: `docker compose run --rm backend sh -c "ruff check . && ruff format --check ."`
-- Migrations: `docker compose run --rm backend python manage.py makemigrations`
+- Migrations: `docker compose run --rm backend python manage.py makemigrations`;
+  apply with `docker compose run --rm -e DJANGO_DB_ROLE=owner backend python manage.py migrate`
+  (runtime role `somali_erp_app` has no DDL rights; tests use `config.test_settings` = owner)
+- Back up the dev DB before applying new migrations:
+  `docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner' | gzip > backups/<date>-before-<milestone>.sql.gz`
 - Frontend checks: `docker compose run --rm --no-deps frontend sh -c "npm run lint && npm run typecheck && npm test"`
 - Frontend build: `docker compose run --rm --no-deps frontend npm run build`
 - Use npm 11 when changing dependencies (the Dockerfile installs it); npm 10's `npm install`

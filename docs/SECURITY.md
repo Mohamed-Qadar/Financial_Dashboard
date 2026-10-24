@@ -39,10 +39,23 @@ so a single bug does not become a data leak:
   immutable to tenant A users (list, retrieve, update, delete, custom actions).
 
 ### Layer 3 — PostgreSQL Row-Level Security (defense in depth)
-- Two database roles:
-  - `erp_owner` — owns tables, runs migrations. Never used by the web process.
-  - `erp_app` — used by Django at runtime. `NOSUPERUSER NOBYPASSRLS`, not a table owner,
-    only DML grants. `audit_logs`: `INSERT, SELECT` only.
+- Two database roles (implemented in milestone 2.0):
+  - Owner (`POSTGRES_USER`, `somali_erp` locally) — owns tables, runs migrations and
+    management commands (`DJANGO_DB_ROLE=owner`). Never used by the web process. In local
+    Docker it is a superuser (image default); in production it must not be.
+  - Runtime (`POSTGRES_APP_USER`, default `somali_erp_app`) — used by Django by default
+    (`DJANGO_DB_ROLE` defaults to `app`). `NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE
+    NOREPLICATION`, owns nothing, DML only, `django_migrations` read-only; later
+    `audit_logs`: `INSERT, SELECT` only.
+  - `manage.py ensure_db_roles` (run as owner, idempotent) creates/updates the runtime role,
+    sets its password from the environment and re-asserts the restricted attributes.
+    Migration `core.0001_app_role_grants` grants privileges and sets default privileges so
+    tables created by later migrations are covered automatically.
+  - Tests connect as the owner; `apps.core.testing.as_app_role()` switches to the runtime role
+    for data-access tests. PostgreSQL checks `SET ROLE` against the *session* user, so
+    privilege-escalation tests log in as the runtime role for real. For the same reason the
+    web process must always **connect** as the runtime role; switching roles on an owner
+    connection is not a security boundary.
 - Every tenant-owned table: `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` with
 
 ```sql

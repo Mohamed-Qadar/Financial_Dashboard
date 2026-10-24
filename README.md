@@ -44,6 +44,11 @@ docker compose up --build     # first run builds images and applies migrations
 
 The web app proxies `/api/*` to Django, so `http://localhost:3000/api/v1/health/` works too.
 
+Database roles: migrations run as the owner role (`POSTGRES_USER`); the web process connects
+as the restricted runtime role (`POSTGRES_APP_USER`), which cannot change the schema or bypass
+row-level security. Startup runs `ensure_db_roles` and `migrate` as the owner automatically.
+If you already had a `.env`, add `POSTGRES_APP_USER` and `POSTGRES_APP_PASSWORD` from `.env.example`.
+
 ## Everyday commands
 
 ```bash
@@ -52,7 +57,8 @@ docker compose run --rm backend pytest                     # tests (real Postgre
 docker compose run --rm backend ruff check .               # lint
 docker compose run --rm backend ruff format .              # format
 docker compose run --rm backend python manage.py makemigrations
-docker compose run --rm backend python manage.py migrate
+# Schema changes need the owner role; the default runtime role has no DDL rights.
+docker compose run --rm -e DJANGO_DB_ROLE=owner backend python manage.py migrate
 
 # Frontend
 docker compose run --rm --no-deps frontend npm test        # Vitest

@@ -38,6 +38,9 @@ jobs:
       POSTGRES_DB: somali_erp
       POSTGRES_USER: somali_erp
       POSTGRES_PASSWORD: ci-only-password
+      # Runtime role; the test suite creates it (migration) and enables login (ensure_db_roles test).
+      POSTGRES_APP_USER: somali_erp_app
+      POSTGRES_APP_PASSWORD: ci-only-app-password
       POSTGRES_HOST: localhost
       POSTGRES_PORT: "5432"
     defaults:

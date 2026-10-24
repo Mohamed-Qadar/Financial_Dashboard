@@ -6,7 +6,7 @@ import pytest
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
-from config.env import env_bool, production_settings_errors
+from config.env import env_bool, production_database_errors, production_settings_errors
 
 STRONG_KEY = "k" * 30 + "Zq8#Lm2!Pw9$Rt5^Xy7&Bn3*Vc6(Hj"
 
@@ -60,10 +60,19 @@ def test_database_is_postgresql():
     assert settings.DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql"
 
 
-def _load_settings_in_subprocess(**overrides: str):
+STRONG_DB_PASSWORD = "Qv7#pL2!xR9$wT4^zN6&"
+PRINT_DB_USER = (
+    "import django; django.setup(); "
+    "from django.conf import settings; print(settings.DATABASES['default']['USER'])"
+)
+
+
+def _load_settings_in_subprocess(*, remove=(), code="import django; django.setup()", **overrides):
     env = {**os.environ, "DJANGO_SETTINGS_MODULE": "config.settings", **overrides}
+    for name in remove:
+        env.pop(name, None)
     return subprocess.run(
-        [sys.executable, "-c", "import django; django.setup()"],
+        [sys.executable, "-c", code],
         env=env,
         cwd=settings.BASE_DIR,
         capture_output=True,
@@ -73,22 +82,64 @@ def _load_settings_in_subprocess(**overrides: str):
     )
 
 
+PRODUCTION = {
+    "DJANGO_ENV": "production",
+    "DJANGO_DEBUG": "false",
+    "DJANGO_SECRET_KEY": STRONG_KEY,
+    "DJANGO_ALLOWED_HOSTS": "erp.example.com",
+    "POSTGRES_APP_PASSWORD": STRONG_DB_PASSWORD,
+}
+
+
 def test_production_startup_refuses_debug_mode():
-    result = _load_settings_in_subprocess(
-        DJANGO_ENV="production",
-        DJANGO_DEBUG="true",
-        DJANGO_SECRET_KEY=STRONG_KEY,
-        DJANGO_ALLOWED_HOSTS="erp.example.com",
-    )
+    result = _load_settings_in_subprocess(**{**PRODUCTION, "DJANGO_DEBUG": "true"})
     assert result.returncode != 0
     assert "DJANGO_DEBUG must be false" in result.stderr
 
 
 def test_production_startup_accepts_safe_configuration():
-    result = _load_settings_in_subprocess(
-        DJANGO_ENV="production",
-        DJANGO_DEBUG="false",
-        DJANGO_SECRET_KEY=STRONG_KEY,
-        DJANGO_ALLOWED_HOSTS="erp.example.com",
-    )
+    result = _load_settings_in_subprocess(**PRODUCTION)
     assert result.returncode == 0, result.stderr
+
+
+def test_production_startup_refuses_placeholder_app_db_password():
+    result = _load_settings_in_subprocess(
+        **{**PRODUCTION, "POSTGRES_APP_PASSWORD": "dev-only-app-password"}
+    )
+    assert result.returncode != 0
+    assert "POSTGRES_APP_PASSWORD must be a random value" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("password", "safe"),
+    [(None, True), (STRONG_DB_PASSWORD, True), ("short", False), ("ci-only-" + "x" * 20, False)],
+)
+def test_production_database_errors(password, safe):
+    assert (production_database_errors(app_password=password) == []) is safe
+
+
+def test_runtime_connects_as_app_role_by_default():
+    result = _load_settings_in_subprocess(remove=["DJANGO_DB_ROLE"], code=PRINT_DB_USER)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == settings.DATABASE_APP_ROLE
+
+
+def test_owner_role_is_explicit_opt_in():
+    result = _load_settings_in_subprocess(DJANGO_DB_ROLE="owner", code=PRINT_DB_USER)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == os.environ["POSTGRES_USER"]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "remove", "message"),
+    [
+        ({"DJANGO_DB_ROLE": "admin"}, [], "DJANGO_DB_ROLE must be 'app' or 'owner'"),
+        ({"DJANGO_DB_ROLE": "app"}, ["POSTGRES_APP_PASSWORD"], "POSTGRES_APP_PASSWORD is required"),
+        ({"POSTGRES_APP_USER": os.environ.get("POSTGRES_USER", "")}, [], "different role"),
+        ({"POSTGRES_APP_USER": 'app"; DROP ROLE x; --'}, [], "must match"),
+    ],
+)
+def test_invalid_database_role_configuration_is_rejected(overrides, remove, message):
+    result = _load_settings_in_subprocess(remove=remove, **overrides)
+    assert result.returncode != 0
+    assert message in result.stderr

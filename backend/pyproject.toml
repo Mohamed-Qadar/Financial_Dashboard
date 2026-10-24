@@ -5,7 +5,7 @@ description = "Somali ERP backend (Django + Django REST Framework)"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings"
+DJANGO_SETTINGS_MODULE = "config.test_settings"
 testpaths = ["apps", "tests"]
 python_files = ["test_*.py"]
 addopts = "--strict-markers -ra"
@@ -30,4 +30,6 @@ select = [
 ignore = ["RUF012"]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101", "S105", "S106"]
+"**/tests/**" = ["S101", "S105", "S106", "S603"]
+# Builds DCL statements from settings.DATABASE_APP_ROLE, which settings validate as a plain identifier.
+"apps/core/db_roles.py" = ["S608"]
