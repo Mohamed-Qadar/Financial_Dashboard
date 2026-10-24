@@ -1,6 +1,8 @@
 """Uniform error responses for the API.
 
-Every error has the shape {"error": {"code": str, "message": str, "details"?: object}}.
+Every error has the shape
+{"error": {"code": str, "message": str, "details"?: object, "request_id"?: str}}.
+``request_id`` matches the X-Request-ID response header so users can quote it to support.
 """
 
 from typing import Any
@@ -12,11 +14,16 @@ from rest_framework import exceptions
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
+from apps.core.request_id import current_request_id
+
 
 def error_payload(code: str, message: str, details: Any = None) -> dict[str, Any]:
     error: dict[str, Any] = {"code": code, "message": message}
     if details is not None:
         error["details"] = details
+    request_id = current_request_id()
+    if request_id is not None:
+        error["request_id"] = request_id
     return {"error": error}
 
 

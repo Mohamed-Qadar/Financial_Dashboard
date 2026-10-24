@@ -241,7 +241,21 @@ role can stay (harmless) or be dropped manually after `REASSIGN/REVOKE` — docu
 
 ---
 
-### Milestone 2.1 — Audit log and request id
+### Milestone 2.1 — Audit log and request id — ✅ done 2026-10-24
+
+Implementation notes (differences from the plan):
+- Columns follow SECURITY.md § 8.3 (adds `outcome`, `actor_type`, `company_id`, `target_type/id`;
+  `changes` became `metadata`; no `user_agent` — not needed, personal data). `tenant_id`/`company_id`
+  stay plain UUIDs with **no** foreign keys, so audit rows never cascade or block deletions.
+- **RLS on `audit_logs` is deferred to 2.3** — no tenant table or tenant context exists yet, so
+  a policy could not be tested meaningfully.
+- No TRUNCATE trigger: the runtime role has no TRUNCATE privilege, the owner could drop such a
+  trigger anyway, and pytest's transactional tests clean tables with TRUNCATE.
+- Only event emitted now: `security.db_runtime_role_ensured` (from `ensure_db_roles`), because no
+  authentication or tenant endpoints exist yet. 2.2+ add their events to `apps/audit/events.py`.
+- Open for 2.2: how failure events survive a rolled-back request transaction (separate
+  connection) and trusted proxy handling for client IPs.
+- Compose now runs `migrate` before `ensure_db_roles` (the command records an audit event).
 Scope / files: new app `apps/audit` (`AuditLog` model, `services.record_event()`),
 `apps/core/middleware.py` (`X-Request-ID`: accept a valid UUID or generate one; echoed in the
 response; included in logs), settings logging format, tests.

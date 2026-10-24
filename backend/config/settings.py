@@ -46,9 +46,12 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "apps.core",
     "apps.accounts",
+    "apps.audit",
 ]
 
 MIDDLEWARE = [
+    # First, so every response and log line carries the request ID.
+    "apps.core.middleware.RequestIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -183,14 +186,29 @@ if IS_PRODUCTION:
     if env_bool("DJANGO_BEHIND_TLS_PROXY", default=False):
         SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# JSON lines by default (machine-readable, injection-safe); "text" is easier to read locally.
+LOG_FORMAT = env("DJANGO_LOG_FORMAT", "json")
+if LOG_FORMAT not in {"json", "text"}:
+    raise ImproperlyConfigured(f"DJANGO_LOG_FORMAT must be 'json' or 'text', got {LOG_FORMAT!r}.")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": "apps.core.structured_logging.RequestIDFilter"},
+    },
     "formatters": {
-        "standard": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+        "json": {"()": "apps.core.structured_logging.JSONFormatter"},
+        "text": {
+            "format": "%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s",
+        },
     },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "standard"},
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": LOG_FORMAT,
+            "filters": ["request_id"],
+        },
     },
     "root": {"handlers": ["console"], "level": env("DJANGO_LOG_LEVEL", "INFO")},
 }

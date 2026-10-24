@@ -63,7 +63,13 @@ def test_api_exceptions_use_error_envelope(client):
     response = client.get("/test/missing/")
 
     assert response.status_code == 404
-    assert response.json() == {"error": {"code": "not_found", "message": "Not found."}}
+    assert response.json() == {
+        "error": {
+            "code": "not_found",
+            "message": "Not found.",
+            "request_id": response["X-Request-ID"],
+        }
+    }
 
 
 def test_endpoints_require_authentication_by_default(client):

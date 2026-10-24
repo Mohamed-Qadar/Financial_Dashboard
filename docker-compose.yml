@@ -25,9 +25,11 @@ services:
       POSTGRES_HOST: db
     # Schema work runs as the owner role; the web process runs as the restricted app role
     # (DJANGO_DB_ROLE defaults to "app"). See docs/SECURITY.md, "Database roles".
+    # migrate first: it creates the role (NOLOGIN) if missing and the audit table that
+    # ensure_db_roles records its event in.
     command: >
-      sh -c "DJANGO_DB_ROLE=owner python manage.py ensure_db_roles &&
-             DJANGO_DB_ROLE=owner python manage.py migrate --noinput &&
+      sh -c "DJANGO_DB_ROLE=owner python manage.py migrate --noinput &&
+             DJANGO_DB_ROLE=owner python manage.py ensure_db_roles &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./backend:/app

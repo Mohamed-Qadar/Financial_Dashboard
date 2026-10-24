@@ -46,6 +46,10 @@ starting work. The owner communicates in Turkish; code, comments and docs are in
 7. **Numbering**: document numbers come from `document_sequences` locked in the posting transaction.
 8. **Secure by default**: DRF default permission is `IsAuthenticated`; public endpoints must opt out explicitly.
 9. No secrets in code; config via environment variables.
+10. **Audit**: security-relevant actions call `apps.audit.services.record_event()` inside the
+    operation's `transaction.atomic()` (success events outside a transaction raise). Add new
+    event types to `apps/audit/events.py`; never rename them. Never put secrets or unnecessary
+    personal data in audit metadata or logs.
 
 ## Conventions
 - Apps live in `backend/apps/<name>/` with `models.py`, `selectors.py`, `services.py`,

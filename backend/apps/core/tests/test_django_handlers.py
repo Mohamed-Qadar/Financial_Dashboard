@@ -10,7 +10,13 @@ def test_unknown_url_returns_json_404(client):
 
     assert response.status_code == 404
     assert response["Content-Type"] == "application/json"
-    assert response.json() == {"error": {"code": "not_found", "message": "Not found."}}
+    assert response.json() == {
+        "error": {
+            "code": "not_found",
+            "message": "Not found.",
+            "request_id": response["X-Request-ID"],
+        }
+    }
 
 
 def test_server_error_handler_hides_details():

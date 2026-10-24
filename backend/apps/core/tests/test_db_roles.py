@@ -11,11 +11,13 @@ from django.db import connection
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.core.testing import as_app_role
+from apps.core.testing import app_role_connection, as_app_role
 
 APP_ROLE = settings.DATABASE_APP_ROLE
 OWNER_ROLE = settings.DATABASES["default"]["USER"]
 DML = ("SELECT", "INSERT", "UPDATE", "DELETE")
+# Tables the runtime role may only read and append to; each has its own privilege tests.
+APPEND_ONLY_TABLES = {"audit_logs"}
 
 pytestmark = pytest.mark.django_db
 
@@ -24,18 +26,6 @@ def _fetchall(query, params=None):
     with connection.cursor() as cursor:
         cursor.execute(query, params)
         return cursor.fetchall()
-
-
-def _app_connection():
-    db = connection.settings_dict
-    return psycopg.connect(
-        host=db["HOST"],
-        port=db["PORT"],
-        dbname=db["NAME"],
-        user=APP_ROLE,
-        password=settings.DATABASE_APP_PASSWORD,
-        connect_timeout=5,
-    )
 
 
 def test_app_role_has_no_elevated_attributes():
@@ -61,7 +51,7 @@ def test_app_role_has_dml_on_every_application_table():
     tables = [
         name
         for (name,) in _fetchall("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-        if name != "django_migrations"
+        if name != "django_migrations" and name not in APPEND_ONLY_TABLES
     ]
     assert "users" in tables
     missing = [
@@ -115,9 +105,7 @@ def test_app_role_can_read_and_write_application_data():
 def test_app_role_cannot_escalate_or_change_schema(statement):
     # A real login as the app role, exactly like the web process. (Switching roles on an owner
     # connection cannot test this: SET ROLE is checked against the session user, the owner.)
-    call_command("ensure_db_roles", stdout=mock.MagicMock())
-    with _app_connection() as app_conn:
-        app_conn.autocommit = True
+    with app_role_connection() as app_conn:
         with pytest.raises(psycopg.errors.InsufficientPrivilege), app_conn.cursor() as cursor:
             cursor.execute(statement)
         with app_conn.cursor() as cursor:
@@ -137,7 +125,7 @@ def test_ensure_db_roles_is_idempotent_and_enables_login():
     call_command("ensure_db_roles", stdout=mock.MagicMock())
     call_command("ensure_db_roles", stdout=mock.MagicMock())
 
-    with _app_connection() as app_conn, app_conn.cursor() as cursor:
+    with app_role_connection() as app_conn, app_conn.cursor() as cursor:
         cursor.execute(
             "SELECT current_user, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)"
         )

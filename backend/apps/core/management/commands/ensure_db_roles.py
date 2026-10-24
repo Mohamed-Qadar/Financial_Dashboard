@@ -1,8 +1,11 @@
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.db import connection
+from django.db import connection, transaction
 from psycopg import sql
 
+from apps.audit.events import AuditEvent, Outcome
+from apps.audit.models import AuditLog
+from apps.audit.services import record_event
 from apps.core.db_roles import APP_ROLE_ATTRIBUTES, app_role
 
 
@@ -23,32 +26,66 @@ class Command(BaseCommand):
                 "not as the runtime role it manages."
             )
 
-        connection.ensure_connection()
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", [role])
-            exists = cursor.fetchone() is not None
+        # Role change and its audit entry commit together or not at all.
+        with transaction.atomic():
+            before = self._privileged_attributes(role)
+            exists = before is not None
 
-        statement = sql.SQL(
-            "{verb} ROLE {role} WITH LOGIN PASSWORD {password} {attributes}"
-        ).format(
-            verb=sql.SQL("ALTER" if exists else "CREATE"),
-            role=sql.Identifier(role),
-            password=sql.Literal(password),
-            attributes=sql.SQL(APP_ROLE_ATTRIBUTES),
-        )
-        # Executed on the raw driver cursor so the password never reaches Django's query log.
-        with connection.connection.cursor() as raw_cursor:
-            raw_cursor.execute(statement)
+            statement = sql.SQL(
+                "{verb} ROLE {role} WITH LOGIN PASSWORD {password} {attributes}"
+            ).format(
+                verb=sql.SQL("ALTER" if exists else "CREATE"),
+                role=sql.Identifier(role),
+                password=sql.Literal(password),
+                attributes=sql.SQL(APP_ROLE_ATTRIBUTES),
+            )
+            # Executed on the raw driver cursor so the password never reaches Django's query
+            # log. Same connection, so it is part of the surrounding transaction.
+            with connection.connection.cursor() as raw_cursor:
+                raw_cursor.execute(statement)
 
+            after = self._privileged_attributes(role)
+            if after is None or any(after.values()) or not self._can_login(role):
+                raise CommandError(f"Role {role} does not have the required restricted attributes.")
+
+            action = "updated" if exists else "created"
+            restored = sorted(name for name, value in (before or {}).items() if value)
+            self._audit(role, action, restored)
+
+        self.stdout.write(f"{action.capitalize()} runtime database role {role} (restricted).")
+        if restored:
+            self.stdout.write(f"Removed unexpected attributes: {', '.join(restored)}.")
+
+    @staticmethod
+    def _privileged_attributes(role: str) -> dict[str, bool] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT rolcanlogin, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, "
-                "rolreplication FROM pg_roles WHERE rolname = %s",
+                "SELECT rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolreplication "
+                "FROM pg_roles WHERE rolname = %s",
                 [role],
             )
-            can_login, *privileged = cursor.fetchone()
-        if not can_login or any(privileged):
-            raise CommandError(f"Role {role} does not have the required restricted attributes.")
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        names = ("superuser", "bypassrls", "createdb", "createrole", "replication")
+        return dict(zip(names, row, strict=True))
 
-        action = "Updated" if exists else "Created"
-        self.stdout.write(f"{action} runtime database role {role} (restricted, login enabled).")
+    @staticmethod
+    def _can_login(role: str) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT rolcanlogin FROM pg_roles WHERE rolname = %s", [role])
+            return cursor.fetchone()[0]
+
+    def _audit(self, role: str, action: str, restored: list[str]) -> None:
+        # Before the first migration the audit table does not exist yet (fresh database).
+        if AuditLog._meta.db_table not in connection.introspection.table_names():
+            self.stderr.write("Audit table not found (run migrate first); event not recorded.")
+            return
+        record_event(
+            AuditEvent.DB_RUNTIME_ROLE_ENSURED,
+            Outcome.SUCCESS,
+            system=True,
+            target_type="db_role",
+            target_id=role,
+            metadata={"action": action, "restored_attributes": restored},
+        )

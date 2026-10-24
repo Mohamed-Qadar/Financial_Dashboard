@@ -135,9 +135,88 @@ without RLS, so this closes the gap RLS leaves.)
 - Production secrets in the hosting platform's secret store.
 
 ## 8. Logging, audit and monitoring
-- Structured application logs with request id, tenant id, user id; no passwords, tokens, or full card/wallet numbers.
-- Audit log (business events) separate from technical logs, append-only for the app role.
-- Alerts on repeated login failures, 5xx spikes, and backup failures (Phase 6).
+
+### 8.1 Request IDs (milestone 2.1)
+- Every HTTP request gets an ID (`RequestIDMiddleware`, first middleware). It is returned in
+  the `X-Request-ID` response header, in every error body (`error.request_id`), in every log
+  line, and in audit entries.
+- **Validation policy for a client-supplied `X-Request-ID`:** accepted only as a canonical
+  hyphenated UUID (36 characters, hex digits and hyphens), normalized to lower case. Missing,
+  empty, longer, differently formatted values or values with control characters are ignored
+  and replaced by a new random UUID4. The value is never parsed further.
+- Request IDs are for correlation only. Clients can pick any valid UUID (including one used
+  before), so an ID is never used for authorization, rate limiting or deduplication.
+
+### 8.2 Application logs
+- JSON lines by default (`DJANGO_LOG_FORMAT=json`; `text` for local reading). JSON encoding
+  escapes newlines and control characters, so user-controlled text cannot forge log lines.
+- One access line per request: method, path **without query string**, status, duration,
+  request ID. No headers, bodies, cookies or query parameters are logged.
+- Never log passwords, tokens, session IDs, full card or wallet numbers.
+
+### 8.3 Audit log (milestone 2.1)
+Table `audit_logs`, written only through `apps.audit.services.record_event()`.
+
+| Field | Content |
+|---|---|
+| `occurred_at` | Database clock (`now()`), not the application clock |
+| `event_type` | From the catalog in `apps/audit/events.py`; unknown types are rejected |
+| `outcome` | `success`, `failure` or `denied` |
+| `actor_type`, `actor_id` | `user` + user id, `system`, or `anonymous` (DB constraint keeps them consistent) |
+| `tenant_id`, `company_id` | When known. Plain UUIDs, no foreign keys, so audit rows never cascade from deletions |
+| `target_type`, `target_id` | What the event is about (≤ 64 characters) |
+| `request_id`, `ip_address` | Correlation; `ip_address` is `REMOTE_ADDR` (see limitations) |
+| `metadata` | Small JSON object (≤ 4 KB). Keys containing password, secret, token, session, cookie, authorization, csrf, api_key, private_key or otp are stored as `[redacted]`; strings are cut at 500 characters |
+
+Not stored on purpose: e-mail addresses, names, user agents, request bodies.
+
+**Transaction rule.** `record_event()` writes on the caller's connection, so an entry commits
+or rolls back together with the operation it describes. A `success` event outside
+`transaction.atomic()` raises an error, so a success can never be recorded for work that later
+rolls back. `failure`/`denied` events may be written after the failed work rolled back.
+Recording failures that happen *inside* a request transaction that is rolled back (relevant
+once `ATOMIC_REQUESTS` is enabled in 2.3) needs a separate connection; this is decided with the
+authentication endpoints in 2.2.
+
+**Immutability controls.**
+1. ORM: `AuditLog.save()` on an existing row, `delete()`, `QuerySet.update/delete/bulk_update` raise.
+2. Privileges: the runtime role `somali_erp_app` has only `SELECT, INSERT` on `audit_logs`
+   (no `UPDATE`, `DELETE`, `TRUNCATE`, `TRIGGER`, `REFERENCES`), cannot `setval` its sequence,
+   and as a non-owner cannot alter, disable or drop the trigger or the table.
+3. Trigger `audit_logs_append_only` rejects `UPDATE` and `DELETE` for **every** role,
+   including the owner, unless someone deliberately removes it.
+4. The table, trigger and privilege restriction are created in one migration, so the table
+   never exists unprotected.
+
+All of this is tested, including with a real login as `somali_erp_app`.
+
+**Limitations — what can still change audit data.**
+- The **owner role** (`somali_erp`) owns the table: it can `TRUNCATE` it, disable or drop
+  the trigger, then update or delete rows, or drop the table. The trigger only stops
+  accidental changes; it does not stop a deliberate owner.
+- A **superuser** (the owner is one in local Docker) can additionally bypass triggers
+  (`session_replication_role = replica`), edit files on disk, or restore an older backup.
+- Anyone with access to **database backups** can alter a backup and restore it.
+- The audit log is therefore tamper-*resistant* against the application and its runtime role,
+  but not tamper-*proof* against database administrators.
+- Reversing migration `audit.0001` drops the table (development only; backups first).
+
+**Future work for independently controlled audit storage** (before production / pilot):
+- Production owner role that is not a superuser, with credentials held separately from the
+  application's deployment secrets.
+- Ship audit entries continuously to storage the database administrators cannot modify:
+  an append-only/WORM object store (e.g. object lock), a separate logging service, or a
+  separate database with different administrators.
+- Optional tamper evidence: hash-chain entries (each row stores a hash of the previous row) and
+  periodically sign or externally store the latest hash, so edits become detectable.
+- Retention and access policy for audit data (who may read it, how long it is kept).
+
+### 8.4 Known gaps (to be closed in later milestones)
+- `ip_address` is `REMOTE_ADDR`. Requests through the Next.js proxy show the proxy's address;
+  trusted `X-Forwarded-For` handling comes with authentication (2.2).
+- Row-level security on `audit_logs` is added in 2.3, together with tenants (the plan listed
+  it under 2.1; it needs the tenant context to be testable).
+- Alerts on repeated login failures, 5xx spikes and backup failures (Phase 6).
 
 ## 9. Supply chain
 - Dependencies pinned (`requirements/*.txt`, `package-lock.json`).

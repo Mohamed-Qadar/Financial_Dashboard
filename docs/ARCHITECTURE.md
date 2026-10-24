@@ -135,10 +135,16 @@ Full details in [SECURITY.md](SECURITY.md).
   "error": {
     "code": "validation_error",
     "message": "Invalid input.",
-    "details": {"quantity": ["Ensure this value is greater than 0."]}
+    "details": {"quantity": ["Ensure this value is greater than 0."]},
+    "request_id": "3f2b8c1e-4d5a-4b6c-9e7f-0a1b2c3d4e5f"
   }
 }
 ```
+
+- Every response carries `X-Request-ID`; error bodies repeat it as `request_id` (milestone 2.1,
+  policy in [SECURITY.md § 8.1](SECURITY.md#81-request-ids-milestone-21)).
+- Logs are JSON lines with the request ID; security-relevant events go to the append-only
+  audit log via `apps.audit.services.record_event()` ([SECURITY.md § 8.3](SECURITY.md#83-audit-log-milestone-21)).
 
 ### 3.6 Time
 Stored as UTC (`timestamptz`, `USE_TZ=True`). Business dates (invoice date, posting date) are
