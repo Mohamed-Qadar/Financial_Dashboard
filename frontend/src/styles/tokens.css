@@ -9,10 +9,11 @@
   color-scheme: light;
 
   /* Neutrals */
-  --color-bg: #f5f7fa;
+  --color-bg: #f3f5f9;
   --color-surface: #ffffff;
   --color-surface-subtle: #f9fafb;
-  --color-border: #e2e8f0;
+  --color-border: #e3e8ef;
+  --color-border-hover: #c5d2e6;
   --color-border-strong: #7c8ba1;
   --color-text: #0f172a;
   --color-text-secondary: #475569;
@@ -24,6 +25,18 @@
   --color-accent-soft: #eff6ff;
   --color-on-accent: #ffffff;
   --color-focus: #2563eb;
+
+  /* Sidebar (deep navy; measured: text 10.8:1, labels 5.9:1, active 12.1:1) */
+  --sidebar-bg: #0f1c33;
+  --sidebar-surface: #16263f;
+  --sidebar-hover: #18294a;
+  --sidebar-active: #1c3563;
+  --sidebar-border: #22334f;
+  --sidebar-text: #c3cfe2;
+  --sidebar-text-strong: #ffffff;
+  --sidebar-label: #8a99b4;
+  --sidebar-accent: #60a5fa;
+  --sidebar-focus: #93c5fd;
 
   /* Status (text on its soft background) */
   --color-success: #047857;
@@ -46,6 +59,7 @@
   --text-lg: 1.25rem; /* 20px */
   --text-xl: 1.5rem; /* 24px */
   --text-2xl: 1.875rem; /* 30px */
+  --text-title: 1.625rem; /* 26px, page titles */
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -64,18 +78,19 @@
 
   /* Shape and depth */
   --radius-control: 6px;
-  --radius-card: 8px;
+  --radius-card: 12px;
   --radius-dialog: 12px;
   --radius-pill: 999px;
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
-  --shadow-md: 0 4px 12px rgb(15 23 42 / 0.08), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-md: 0 6px 16px -4px rgb(16 24 40 / 0.1), 0 2px 6px -2px rgb(16 24 40 / 0.06);
+  --shadow-lg: 0 16px 32px -8px rgb(16 24 40 / 0.16), 0 4px 10px -4px rgb(16 24 40 / 0.08);
   --focus-ring: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-focus);
 
   /* Layout */
-  --sidebar-width: 240px;
-  --sidebar-width-collapsed: 64px;
-  --topbar-height: 56px;
-  --content-max-width: 1200px;
+  --sidebar-width: 264px;
+  --sidebar-width-collapsed: 72px;
+  --topbar-height: 64px;
+  --content-max-width: 1320px;
   --control-height: 36px;
 
   /* Layers */

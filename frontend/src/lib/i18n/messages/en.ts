@@ -5,6 +5,7 @@
 export const en = {
   common: {
     appName: "Somali ERP",
+    tagline: "Business management",
     loading: "Loading…",
     retry: "Try again",
     back: "Back",
@@ -25,6 +26,11 @@ export const en = {
     expand: "Expand sidebar",
     openMenu: "Open menu",
     closeMenu: "Close menu",
+    collapseShort: "Collapse",
+    breadcrumb: "Breadcrumb",
+    sectionMain: "Main",
+    sectionSettings: "Settings",
+    workspace: "Workspace",
   },
   topbar: {
     activeCompany: "Active company",
@@ -87,6 +93,13 @@ export const en = {
     open: "Open",
     opening: "Opening…",
     current: "Current",
+    openCompany: "Open company",
+    lastOpened: "Last opened",
+    currencyShort: "Currency",
+    fiscalYearShort: "Fiscal year",
+    noCompany: "No company selected",
+    companyCount: (count: number) => `${count} ${count === 1 ? "company" : "companies"}`,
+    businessCount: (count: number) => `${count} ${count === 1 ? "business" : "businesses"}`,
   },
   home: {
     title: "Overview",
@@ -101,6 +114,8 @@ export const en = {
     fiscalYearStart: "Fiscal year starts in",
     signedInAs: "Signed in as",
     quickActions: "Quick actions",
+    switchCompanyHint: "Open another company you have access to.",
+    changePasswordHint: "Your other sessions are signed out afterwards.",
     modulesTitle: "Business modules",
     modulesBody:
       "Sales, purchasing, inventory and accounting will appear here when those modules are released.",

@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuItem, MenuLink, MenuNote } from "@/components/ui/Menu";
 import { initials } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/LocaleProvider";
@@ -17,18 +18,24 @@ export function UserMenu() {
   return (
     <Menu
       label={t.topbar.userMenu}
+      buttonClassName="user-button"
       trigger={
         <>
-          <span className="shell-avatar" aria-hidden="true">
+          <span className="user-avatar" aria-hidden="true">
             {initials(user.full_name, user.email)}
           </span>
-          <span className="shell-user-name">{name}</span>
+          <span className="user-text">
+            <span className="user-name">{name}</span>
+            <span className="user-email">{user.email}</span>
+          </span>
+          <Icon name="chevronDown" size={16} />
           <span className="visually-hidden">{t.topbar.userMenu}</span>
         </>
       }
     >
       <MenuNote>
-        <span className="shell-user-email">{user.email}</span>
+        <span className="menu-user-name">{name}</span>
+        <span className="menu-user-email">{user.email}</span>
       </MenuNote>
       <MenuLink href="/account" icon="user">
         {t.topbar.accountSettings}

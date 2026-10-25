@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { Icon } from "@/components/ui/Icon";
 import { Menu, MenuGroup, MenuItem, MenuNote } from "@/components/ui/Menu";
+import { Monogram } from "@/components/ui/Monogram";
 import { Spinner } from "@/components/ui/Spinner";
 import { companies } from "@/lib/api/endpoints";
 import { errorMessage } from "@/lib/api/messages";
@@ -16,7 +17,10 @@ import { useSession } from "@/lib/session/SessionProvider";
 
 import { useShellNotice } from "./ShellNotice";
 
-type ListState = { status: "idle" | "loading" } | { status: "ready"; items: Company[] } | { status: "error"; error: unknown };
+type ListState =
+  | { status: "idle" | "loading" }
+  | { status: "ready"; items: Company[] }
+  | { status: "error"; error: unknown };
 
 function byTenant(items: Company[]): [string, Company[]][] {
   const groups = new Map<string, Company[]>();
@@ -28,11 +32,12 @@ function byTenant(items: Company[]): [string, Company[]][] {
 }
 
 /**
- * Active-company switcher. The list comes from `GET /api/v1/companies/` (loaded when the menu
- * opens). Choosing a company records the switch (`POST /api/v1/company/select/`, audited)
- * and navigates to its URL; the server verifies that URL again on every request.
+ * Active-company switcher at the top of the sidebar. The list comes from
+ * `GET /api/v1/companies/` (loaded when the menu opens). Choosing a company records the
+ * switch (`POST /api/v1/company/select/`, audited) and navigates to its URL; the server
+ * verifies that URL again on every request.
  */
-export function CompanySwitcher({ active }: { active: Company | null }) {
+export function CompanySwitcher({ active, compact = false }: { active: Company | null; compact?: boolean }) {
   const { t } = useI18n();
   const router = useRouter();
   const { handleAuthError } = useSession();
@@ -62,28 +67,34 @@ export function CompanySwitcher({ active }: { active: Company | null }) {
 
   if (active === null) {
     return (
-      <Link href="/select-company" className="ui-menu-button shell-company">
-        <Icon name="building" size={18} />
-        <span className="shell-company-name">{t.topbar.selectCompany}</span>
+      <Link href="/select-company" className="workspace-card" title={compact ? t.topbar.selectCompany : undefined}>
+        <span className="workspace-empty-icon">
+          <Icon name="building" size={18} />
+        </span>
+        <span className={compact ? "visually-hidden" : "workspace-text"}>
+          <span className="workspace-name">{t.topbar.selectCompany}</span>
+          <span className="workspace-tenant">{t.companies.noCompany}</span>
+        </span>
       </Link>
     );
   }
 
+  const name = companyDisplayName(active);
   return (
     <Menu
       label={t.topbar.switchCompany}
       align="start"
       onOpen={load}
-      buttonClassName="ui-menu-button shell-company"
+      buttonClassName="workspace-card"
       trigger={
         <>
-          <Icon name="building" size={18} />
-          <span className="shell-company-text">
+          <Monogram id={active.id} name={name} />
+          <span className={compact ? "visually-hidden" : "workspace-text"}>
             <span className="visually-hidden">{t.topbar.activeCompany}: </span>
-            <span className="shell-company-name">{companyDisplayName(active)}</span>
-            <span className="shell-company-tenant">{active.tenant.name}</span>
+            <span className="workspace-name">{name}</span>
+            <span className="workspace-tenant">{active.tenant.name}</span>
           </span>
-          <Icon name="chevronDown" size={16} />
+          {!compact ? <Icon name="chevronsUpDown" size={16} /> : null}
         </>
       }
     >

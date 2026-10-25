@@ -12,6 +12,7 @@ export const reviewStatus: "needs-review" | "reviewed" = "needs-review";
 export const so: Messages = {
   common: {
     appName: "Somali ERP",
+    tagline: "Maamulka ganacsiga",
     loading: "Waa la soo rarayaa…",
     retry: "Isku day mar kale",
     back: "Dib u noqo",
@@ -32,6 +33,11 @@ export const so: Messages = {
     expand: "Ballaadhi liiska dhinaca",
     openMenu: "Fur liiska",
     closeMenu: "Xir liiska",
+    collapseShort: "Yaree",
+    breadcrumb: "Raad-raac",
+    sectionMain: "Guud",
+    sectionSettings: "Dejinta",
+    workspace: "Goobta shaqada",
   },
   topbar: {
     activeCompany: "Shirkadda firfircoon",
@@ -94,6 +100,13 @@ export const so: Messages = {
     open: "Fur",
     opening: "Waa la furayaa…",
     current: "Hadda",
+    openCompany: "Fur shirkadda",
+    lastOpened: "Ugu dambeysay",
+    currencyShort: "Lacagta",
+    fiscalYearShort: "Sannad maaliyadeed",
+    noCompany: "Shirkad lama dooran",
+    companyCount: (count: number) => `${count} ${count === 1 ? "shirkad" : "shirkadood"}`,
+    businessCount: (count: number) => `${count} ganacsi`,
   },
   home: {
     title: "Guudmar",
@@ -108,6 +121,8 @@ export const so: Messages = {
     fiscalYearStart: "Sannadka maaliyaddu wuxuu bilaabmaa",
     signedInAs: "Waxaad ku soo gashay",
     quickActions: "Ficillo degdeg ah",
+    switchCompanyHint: "Fur shirkad kale oo aad xaq u leedahay.",
+    changePasswordHint: "Fadhiyadaada kale waa la xirayaa kadib.",
     modulesTitle: "Qaybaha ganacsiga",
     modulesBody:
       "Iibka, iibsiga, kaydka alaabta iyo xisaabaadku halkan ayay ka muuqan doonaan marka qaybahaas la sii daayo.",

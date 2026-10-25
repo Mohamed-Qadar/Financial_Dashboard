@@ -22,6 +22,10 @@ const PATHS = {
   lock: "M6 11h12v9H6zM8 11V7a4 4 0 0 1 8 0v4",
   layers: "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5",
   swap: "M7 7h13l-3-3M17 17H4l3 3",
+  chevronsUpDown: "M8 9l4-4 4 4M8 15l4 4 4-4",
+  arrowRight: "M5 12h14M13 6l6 6-6 6",
+  sidebarCollapse: "M4 4h16v16H4zM9 4v16M15 10l-2 2 2 2",
+  sidebarExpand: "M4 4h16v16H4zM9 4v16M13 10l2 2-2 2",
 } as const;
 
 export type IconName = keyof typeof PATHS;

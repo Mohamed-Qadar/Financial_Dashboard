@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithI18n } from "@/test/i18n";
@@ -118,7 +118,7 @@ describe("AppShell", () => {
     renderWithI18n(<AppShell company={null}>x</AppShell>);
 
     fireEvent.click(screen.getByRole("button", { name: /User menu/ }));
-    expect(screen.getByText(TEST_USER.email)).toBeTruthy();
+    expect(within(screen.getByRole("menu", { name: "User menu" })).getByText(TEST_USER.email)).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Account settings" }).getAttribute("href")).toBe("/account");
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
@@ -130,7 +130,7 @@ describe("AppShell", () => {
     pathname = "/account";
     renderWithI18n(<AppShell company={null}>x</AppShell>);
 
-    expect(screen.getByRole("link", { name: "Select company" }).getAttribute("href")).toBe("/select-company");
+    expect(screen.getByRole("link", { name: /^Select company/ }).getAttribute("href")).toBe("/select-company");
     expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
   });
 });

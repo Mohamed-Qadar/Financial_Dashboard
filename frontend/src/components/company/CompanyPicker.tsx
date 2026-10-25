@@ -1,17 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { FormError } from "@/components/auth/FormError";
 import { Alert } from "@/components/ui/Alert";
-import { Button } from "@/components/ui/Button";
-import { EmptyState, ErrorState, PageHeader, Skeleton } from "@/components/ui/States";
+import { Icon } from "@/components/ui/Icon";
+import { Monogram } from "@/components/ui/Monogram";
+import { Spinner } from "@/components/ui/Spinner";
+import { Chip, EmptyState, ErrorState, PageHeader, Skeleton } from "@/components/ui/States";
 import { companies } from "@/lib/api/endpoints";
 import { isApiError } from "@/lib/api/errors";
 import type { Company } from "@/lib/api/types";
-import { companyDisplayName } from "@/lib/format";
+import { companyDisplayName, currencyName, monthName } from "@/lib/format";
+import type { Locale, Messages } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/LocaleProvider";
+import { rememberedCompany } from "@/lib/session/companyMemory";
 import { useSession } from "@/lib/session/SessionProvider";
 
 type State =
@@ -19,21 +23,31 @@ type State =
   | { status: "ready"; items: Company[] }
   | { status: "error"; error: unknown };
 
-function groupByTenant(items: Company[]): { tenant: string; items: Company[] }[] {
-  const groups = new Map<string, Company[]>();
-  for (const company of items) {
-    groups.set(company.tenant.name, [...(groups.get(company.tenant.name) ?? []), company]);
-  }
-  return [...groups.entries()].map(([tenant, list]) => ({ tenant, items: list }));
+interface Group {
+  tenantId: string;
+  tenant: string;
+  items: Company[];
 }
+
+function groupByTenant(items: Company[]): Group[] {
+  const groups = new Map<string, Group>();
+  for (const company of items) {
+    const group = groups.get(company.tenant.id) ?? { tenantId: company.tenant.id, tenant: company.tenant.name, items: [] };
+    group.items.push(company);
+    groups.set(company.tenant.id, group);
+  }
+  return [...groups.values()];
+}
+
+const noSubscription = () => () => undefined;
 
 /**
  * Companies the user may open, grouped by business (tenant). Opening one records the switch
  * (audited) and goes to `/c/<id>`. With `auto` (straight after login) and exactly one
- * company, it is opened directly.
+ * company, it is opened directly. Everything shown comes from `GET /api/v1/companies/`.
  */
 export function CompanyPicker({ notice, auto }: { notice?: "unavailable"; auto: boolean }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const { handleAuthError } = useSession();
   const [state, setState] = useState<State>({ status: "loading" });
@@ -41,6 +55,8 @@ export function CompanyPicker({ notice, auto }: { notice?: "unavailable"; auto: 
   const [failure, setFailure] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   const autoOpened = useRef(false);
+  // This tab's last company (see companyMemory): highlighted, never used for access.
+  const lastOpened = useSyncExternalStore(noSubscription, rememberedCompany, () => null);
 
   const reload = useCallback(() => {
     setState({ status: "loading" });
@@ -83,63 +99,145 @@ export function CompanyPicker({ notice, auto }: { notice?: "unavailable"; auto: 
     }
   }, [auto, notice, state, open]);
 
+  const groups = state.status === "ready" ? groupByTenant(state.items) : [];
+
   return (
-    <>
-      <PageHeader title={t.companies.selectTitle} description={t.companies.selectIntro} />
-      <div className="picker">
-        {notice === "unavailable" ? <Alert tone="warning">{t.companies.unavailable}</Alert> : null}
-        <FormError error={failure} />
-        {state.status === "loading" ? (
-          <div className="picker-grid" aria-busy="true" aria-label={t.common.loading}>
-            {[0, 1].map((key) => (
-              <div key={key} className="ui-card picker-card">
-                <Skeleton width="medium" />
-                <Skeleton width="short" />
+    <div className="picker">
+      <PageHeader
+        eyebrow={t.nav.workspace}
+        title={t.companies.selectTitle}
+        description={t.companies.selectIntro}
+        meta={
+          state.status === "ready" && state.items.length > 0 ? (
+            <>
+              <Chip icon="building">{t.companies.companyCount(state.items.length)}</Chip>
+              <Chip icon="layers">{t.companies.businessCount(groups.length)}</Chip>
+            </>
+          ) : null
+        }
+      />
+
+      {notice === "unavailable" ? <Alert tone="warning">{t.companies.unavailable}</Alert> : null}
+      <FormError error={failure} />
+
+      {state.status === "loading" ? (
+        <div className="picker-grid" aria-busy="true" aria-label={t.common.loading}>
+          {[0, 1, 2].map((key) => (
+            <div key={key} className="company-card" data-skeleton>
+              <div className="company-card-head">
+                <span className="ui-monogram" data-tone="slate" />
+                <div className="company-card-titles">
+                  <Skeleton width="medium" />
+                  <Skeleton width="short" />
+                </div>
               </div>
-            ))}
-          </div>
-        ) : state.status === "error" ? (
-          <div className="ui-card">
-            <ErrorState error={state.error} onRetry={reload} />
-          </div>
-        ) : state.items.length === 0 ? (
-          <div className="ui-card">
-            <EmptyState icon="building" title={t.companies.noneTitle}>
-              {t.companies.noneBody}
-            </EmptyState>
-          </div>
-        ) : (
-          groupByTenant(state.items).map((group) => (
-            <section key={group.tenant} className="picker-group" aria-label={`${t.companies.business}: ${group.tenant}`}>
-              <h2 className="picker-group-title">{group.tenant}</h2>
-              <ul role="list" className="picker-grid">
-                {group.items.map((company) => (
-                  <li key={company.id} className="ui-card picker-card">
-                    <div className="picker-card-text">
-                      <p className="picker-card-name">{companyDisplayName(company)}</p>
-                      <p className="picker-card-meta">
-                        <span className="tabular">{company.code}</span> · {company.base_currency_code}
-                        {company.trade_name.trim() ? <> · {company.legal_name}</> : null}
-                      </p>
-                    </div>
-                    <Button
-                      variant="secondary"
-                      icon="chevronRight"
-                      loading={opening === company.id}
-                      loadingText={t.companies.opening}
-                      disabled={opening !== null && opening !== company.id}
-                      onClick={() => void open(company)}
-                      aria-label={`${t.companies.open}: ${companyDisplayName(company)}`}
-                    >
-                      {t.companies.open}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))
-        )}
+              <Skeleton />
+            </div>
+          ))}
+        </div>
+      ) : state.status === "error" ? (
+        <div className="ui-card">
+          <ErrorState error={state.error} onRetry={reload} />
+        </div>
+      ) : state.items.length === 0 ? (
+        <div className="ui-card">
+          <EmptyState icon="building" title={t.companies.noneTitle}>
+            {t.companies.noneBody}
+          </EmptyState>
+        </div>
+      ) : (
+        groups.map((group) => (
+          <section key={group.tenantId} className="picker-group" aria-labelledby={`business-${group.tenantId}`}>
+            <header className="picker-group-head">
+              <Monogram id={group.tenantId} name={group.tenant} size="sm" />
+              <div>
+                <p className="ui-eyebrow">{t.companies.business}</p>
+                <h2 id={`business-${group.tenantId}`} className="picker-group-title">
+                  {group.tenant}
+                </h2>
+              </div>
+              <span className="ui-badge">{t.companies.companyCount(group.items.length)}</span>
+            </header>
+            <ul role="list" className="picker-grid">
+              {group.items.map((company) => (
+                <li key={company.id}>
+                  <CompanyCard
+                    company={company}
+                    locale={locale}
+                    t={t}
+                    lastOpened={company.id === lastOpened}
+                    opening={opening === company.id}
+                    disabled={opening !== null && opening !== company.id}
+                    onOpen={() => void open(company)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      )}
+    </div>
+  );
+}
+
+function CompanyCard({
+  company,
+  locale,
+  t,
+  lastOpened,
+  opening,
+  disabled,
+  onOpen,
+}: {
+  company: Company;
+  locale: Locale;
+  t: Messages;
+  lastOpened: boolean;
+  opening: boolean;
+  disabled: boolean;
+  onOpen: () => void;
+}) {
+  const name = companyDisplayName(company);
+  const showLegalName = company.trade_name.trim() !== "" && company.legal_name !== name;
+  return (
+    <article className="company-card" data-busy={opening || undefined}>
+      <div className="company-card-head">
+        <Monogram id={company.id} name={name} size="lg" />
+        <div className="company-card-titles">
+          <h3 className="company-card-name">{name}</h3>
+          {showLegalName ? <p className="company-card-legal">{company.legal_name}</p> : null}
+        </div>
+        {lastOpened ? (
+          <span className="ui-badge" data-tone="info">
+            {t.companies.lastOpened}
+          </span>
+        ) : null}
       </div>
-    </>
+      <dl className="company-card-facts">
+        <div>
+          <dt>{t.home.code}</dt>
+          <dd className="tabular">{company.code}</dd>
+        </div>
+        <div>
+          <dt>{t.companies.currencyShort}</dt>
+          <dd title={currencyName(locale, company.base_currency_code)}>{company.base_currency_code}</dd>
+        </div>
+        <div>
+          <dt>{t.companies.fiscalYearShort}</dt>
+          <dd>{monthName(locale, company.fiscal_year_start_month)}</dd>
+        </div>
+      </dl>
+      <button
+        type="button"
+        className="company-card-action"
+        onClick={onOpen}
+        disabled={disabled || opening}
+        aria-busy={opening || undefined}
+        aria-label={`${t.companies.openCompany}: ${name}`}
+      >
+        <span>{opening ? t.companies.opening : t.companies.openCompany}</span>
+        {opening ? <Spinner /> : <Icon name="arrowRight" size={16} />}
+      </button>
+    </article>
   );
 }

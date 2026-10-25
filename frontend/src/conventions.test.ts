@@ -10,18 +10,26 @@ vi.mock("@/dev/UiPreview", () => ({ UiPreview: () => null }));
 
 const SRC = join(process.cwd(), "src");
 
-function sourceFiles(dir = SRC): string[] {
+function listFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
-    if (statSync(path).isDirectory()) return sourceFiles(path);
+    if (statSync(path).isDirectory()) return listFiles(path);
     return /\.(ts|tsx)$/.test(name) ? [relative(SRC, path).split(sep).join("/")] : [];
   });
 }
 
+// Listed and read once: the Windows bind mount makes file access slow.
+const ALL_FILES = listFiles(SRC);
+const contents = new Map<string, string>();
+const sourceFiles = () => ALL_FILES;
+
 const isTest = (file: string) => /\.test\.(ts|tsx)$/.test(file) || file.startsWith("test/");
 const isPreview = (file: string) => file.startsWith("dev/") || file.startsWith("app/ui-preview/");
 const APP_FILES = sourceFiles().filter((file) => !isTest(file) && !isPreview(file));
-const read = (file: string) => readFileSync(join(SRC, file), "utf8");
+const read = (file: string) => {
+  if (!contents.has(file)) contents.set(file, readFileSync(join(SRC, file), "utf8"));
+  return contents.get(file)!;
+};
 
 function offenders(files: string[], pattern: RegExp): string[] {
   return files.filter((file) => pattern.test(read(file)));
@@ -31,7 +39,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("no fabricated data on production screens", () => {
+describe("no fabricated data on production screens", { timeout: 30_000 }, () => {
   it("application code never imports preview data or the static (API-less) providers", () => {
     expect(offenders(APP_FILES, /@\/dev\/|previewData|StaticSessionProvider|StaticCompanyProvider/)).toEqual([
       // Defined (not used) here:
@@ -57,7 +65,7 @@ describe("no fabricated data on production screens", () => {
   });
 });
 
-describe("security conventions", () => {
+describe("security conventions", { timeout: 30_000 }, () => {
   it("no raw HTML injection", () => {
     const nonTest = sourceFiles().filter((file) => !isTest(file));
     expect(offenders(nonTest, /dangerously[S]etInnerHTML/)).toEqual([]);

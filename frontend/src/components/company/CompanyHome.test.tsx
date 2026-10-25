@@ -22,10 +22,12 @@ describe("CompanyHome", () => {
   it("shows the company record from the API, localized", async () => {
     renderWithI18n(<CompanyHome />);
 
-    expect(screen.getByRole("heading", { name: "Overview" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: COMPANY.legal_name })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Company details" })).toBeTruthy();
     expect(screen.getByText("Welcome, Test User")).toBeTruthy();
-    expect(screen.getByText(COMPANY.legal_name)).toBeTruthy();
-    expect(screen.getByText("Somalia")).toBeTruthy();
+    // Page title and the details table both show the record's legal name.
+    expect(screen.getAllByText(COMPANY.legal_name)).toHaveLength(2);
+    expect(screen.getAllByText("Somalia").length).toBeGreaterThan(0);
     expect(screen.getByText("July")).toBeTruthy();
     expect(await screen.findAllByText("Operational")).toHaveLength(2);
   });
@@ -33,7 +35,8 @@ describe("CompanyHome", () => {
   it("uses Somali names for country and month", () => {
     renderWithI18n(<CompanyHome />, "so");
 
-    expect(screen.getByRole("heading", { name: "Guudmar" })).toBeTruthy();
+    expect(screen.getByText("Ku soo dhowow, Test User")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Faahfaahinta shirkadda" })).toBeTruthy();
     expect(screen.getByText("Luulyo")).toBeTruthy();
   });
 

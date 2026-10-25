@@ -88,7 +88,11 @@ svg {
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
-  border-radius: var(--radius-control);
+}
+
+/* Text links have no radius of their own; round the ring a little. */
+a:focus-visible {
+  border-radius: 4px;
 }
 
 /* Numbers that must line up (amounts, quantities, codes). */

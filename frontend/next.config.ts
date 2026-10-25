@@ -5,6 +5,8 @@ const backendUrl = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Development-only badge; bottom-left would cover the sidebar's collapse control.
+  devIndicators: { position: "bottom-right" },
   // Django API URLs end with "/"; do not let Next.js redirect them to the slash-less form.
   skipTrailingSlashRedirect: true,
   async headers() {

@@ -67,6 +67,26 @@ export function initials(fullName: string, email: string): string {
   return letters.toUpperCase();
 }
 
+export const MONOGRAM_TONES = ["blue", "indigo", "teal", "cyan", "violet", "slate"] as const;
+export type MonogramTone = (typeof MONOGRAM_TONES)[number];
+
+/** A stable colour for an id (same company, same colour everywhere). */
+export function monogramTone(id: string): MonogramTone {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return MONOGRAM_TONES[hash % MONOGRAM_TONES.length]!;
+}
+
+/** Up to two letters of a name, ignoring bracketed parts ("Hodan Foods (test)" → "HF"). */
+export function monogramLetters(name: string): string {
+  const words = name
+    .replace(/\(.*?\)/g, " ")
+    .split(/\s+/)
+    .filter((word) => /\p{L}/u.test(word));
+  const letters = words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : (words[0] ?? "?").slice(0, 2);
+  return letters.toUpperCase();
+}
+
 export function companyDisplayName(company: { trade_name: string; legal_name: string }): string {
   return company.trade_name.trim() || company.legal_name;
 }

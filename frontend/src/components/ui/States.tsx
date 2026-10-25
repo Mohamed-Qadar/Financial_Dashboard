@@ -76,22 +76,47 @@ export function Skeleton({ width }: { width?: "short" | "medium" }) {
   return <span className="ui-skeleton" data-width={width} aria-hidden="true" />;
 }
 
+/**
+ * Page title block: optional eyebrow (context), leading visual, description, facts shown as
+ * chips (`meta`, real values only) and actions.
+ */
 export function PageHeader({
   title,
+  eyebrow,
+  leading,
   description,
+  meta,
   actions,
 }: {
   title: string;
+  eyebrow?: string;
+  leading?: ReactNode;
   description?: ReactNode;
+  meta?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <header className="ui-page-header">
-      <div>
-        <h1>{title}</h1>
-        {description ? <p>{description}</p> : null}
+      <div className="ui-page-header-main">
+        {leading ? <div className="ui-page-header-leading">{leading}</div> : null}
+        <div className="ui-page-header-text">
+          {eyebrow ? <p className="ui-eyebrow">{eyebrow}</p> : null}
+          <h1>{title}</h1>
+          {description ? <p className="ui-page-header-description">{description}</p> : null}
+          {meta ? <div className="ui-chips">{meta}</div> : null}
+        </div>
       </div>
       {actions ? <div className="ui-button-row">{actions}</div> : null}
     </header>
+  );
+}
+
+/** A small labelled fact ("USD", "TEST1") for page headers. */
+export function Chip({ icon, children }: { icon?: IconName; children: ReactNode }) {
+  return (
+    <span className="ui-chip">
+      {icon ? <Icon name={icon} size={14} /> : null}
+      {children}
+    </span>
   );
 }

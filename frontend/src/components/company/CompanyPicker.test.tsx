@@ -38,7 +38,7 @@ describe("CompanyPicker", () => {
     renderWithI18n(<CompanyPicker auto={false} />);
 
     expect(await screen.findByRole("heading", { name: "Second Test Business" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open: Other Test Ltd" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open company: Other Test Ltd" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/c/${TWO.id}`));
     expect(select).toHaveBeenCalledWith(TWO.id);
@@ -57,7 +57,7 @@ describe("CompanyPicker", () => {
     list.mockResolvedValue([ONE]);
     renderWithI18n(<CompanyPicker auto={false} />);
 
-    await screen.findByRole("button", { name: `Open: ${ONE.legal_name}` });
+    await screen.findByRole("button", { name: `Open company: ${ONE.legal_name}` });
     expect(select).not.toHaveBeenCalled();
   });
 
@@ -73,7 +73,7 @@ describe("CompanyPicker", () => {
     renderWithI18n(<CompanyPicker auto notice="unavailable" />);
 
     expect(screen.getByRole("status").textContent).toContain("That company is not available");
-    await screen.findByRole("button", { name: `Open: ${ONE.legal_name}` });
+    await screen.findByRole("button", { name: `Open company: ${ONE.legal_name}` });
     expect(select).not.toHaveBeenCalled(); // no auto-open after an unavailable company
   });
 });
