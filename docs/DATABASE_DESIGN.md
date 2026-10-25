@@ -1,7 +1,10 @@
 # Database Design — Somali ERP
 
-Status: Draft v0.1 (Phase 0). This is the target relational design for the MVP. Tables are
-created phase by phase through Django migrations; this document is updated when they are.
+Status: Draft v0.1 (Phase 0), with the Phase 3 deltas approved on 2026-10-25
+([PHASE_3_PLAN.md](PHASE_3_PLAN.md)). This is the target relational design for the MVP. Tables
+are created phase by phase through Django migrations; this document is updated when they are.
+Phase numbers below follow the re-ordered roadmap (3 master data, 4 sales + posting engine,
+5 inventory, 6 purchasing, 7 accounting close).
 
 ## 1. Conventions
 
@@ -82,7 +85,7 @@ Accountant, Cashier, Storekeeper). **UQ (tenant_id, name).**
 | tax_id | varchar(50) NULL | |
 | timezone | varchar(50) | default `Africa/Mogadishu` |
 | fiscal_year_start_month | smallint | CK 1–12 |
-| allow_negative_stock | bool | default false (added with inventory, Phase 3) |
+| allow_negative_stock | bool | default false (added with inventory, Phase 5) |
 | is_active | bool | |
 
 ### branches (T, implemented)
@@ -91,9 +94,10 @@ Accountant, Cashier, Storekeeper). **UQ (tenant_id, name).**
 `(tenant_id, company_id) → companies (tenant_id, id)` (`branches_company_same_tenant_fk`,
 immediate, `ON DELETE RESTRICT`).
 
-### warehouses (T)
+### warehouses (T, Phase 5)
 `id`, `tenant_id`, `company_id` FK, `branch_id` FK NULL, `code`, `name`, `is_active`.
-**UQ (company_id, code).**
+**UQ (company_id, code).** A default warehouse is created for every existing and new company
+when the table arrives (decision D9).
 
 ## 4. Master data
 
@@ -101,15 +105,24 @@ immediate, `ON DELETE RESTRICT`).
 `code` char(3) PK, `name`, `symbol`, `minor_units` smallint CK 0–4. Seeded with `USD`, `SOS`
 (and others on request, see open decisions on Somaliland shilling).
 
-### company_currencies (T)
-`company_id`, `currency_code`, `is_enabled`. Which currencies a company transacts in.
+### company_currencies — cut (2026-10-25)
+Not built while only USD and SOS exist: currency codes are validated against the global
+`currencies` table. Revisit when a third currency is added.
 
-### exchange_rates (T)
+### exchange_rates (T, Phase 3)
 `id`, `tenant_id`, `company_id`, `from_currency`, `to_currency`, `rate NUMERIC(20,8)` CK `> 0`,
-`effective_date date`, `source` (`manual`, later `import`). **UQ (company_id, from_currency, to_currency, effective_date).**
-Documents copy the rate they used; changing a rate never changes posted documents.
+CK `from_currency <> to_currency`, `effective_date date`, `source` (`manual`, later `import`).
+**UQ (company_id, from_currency, to_currency, effective_date).** Composite FK
+`(tenant_id, company_id) → companies (tenant_id, id)`.
+Stored in **one canonical direction, USD → SOS** (SOS per 1 USD); the inverse is derived in the
+selector, never stored, so the two directions cannot drift apart. One rate per pair per day;
+corrections are audited `PATCH`es. Documents copy the rate they used; changing a rate never
+changes posted documents.
 
-### contacts (T) — customers and suppliers, shared across a tenant's companies
+Phase 3 master-data tables (contacts, units_of_measure, product_categories, products, accounts,
+tax_rates, exchange_rates) are archived, never deleted: the runtime role has no `DELETE` on them.
+
+### contacts (T, Phase 3) — customers and suppliers, shared across a tenant's companies
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -124,15 +137,19 @@ Documents copy the rate they used; changing a rate never changes posted document
 | payment_terms_days | smallint | CK `>= 0` |
 | is_active | bool | |
 
-### units_of_measure (T)
+### units_of_measure (T, Phase 3)
 `id`, `tenant_id`, `name`, `symbol`, `category` (`unit`, `weight`, `volume`, `length`, `time`),
-`ratio NUMERIC(18,6)` to the category's reference unit CK `> 0`, `is_reference` bool.
+`ratio NUMERIC(18,6)` to the category's reference unit CK `> 0`, `is_reference` bool, `is_active` bool.
 **UQ (tenant_id, symbol).** One reference unit per category (partial unique index).
+Seeded per tenant: pcs, kg, g, litre, ml, metre, plus carton and box as **ratio-1 count labels
+only** (packaging ratios differ per product; a per-product mechanism comes later).
 
-### product_categories (T)
-`id`, `tenant_id`, `parent_id` FK self NULL, `name`. **UQ (tenant_id, parent_id, name).**
+### product_categories (T, Phase 3)
+`id`, `tenant_id`, `parent_id` FK self NULL, `name`, `is_active` bool.
+**UQ (tenant_id, parent_id, name)** with `NULLS NOT DISTINCT`. Composite FK
+`(tenant_id, parent_id) → product_categories (tenant_id, id)`; cycles rejected by the service.
 
-### products (T)
+### products (T, Phase 3)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -145,12 +162,20 @@ Documents copy the rate they used; changing a rate never changes posted document
 | base_uom_id | uuid FK | Stock is kept in this unit |
 | sales_price, purchase_price | numeric(18,4) | CK `>= 0`; default prices in `price_currency_code` (per-company/currency price lists come later) |
 | price_currency_code | char(3) FK | |
-| sales_tax_id, purchase_tax_id | uuid FK NULL | |
 | is_active | bool | |
 
-### tax_rates (T)
+Composite FKs `(tenant_id, base_uom_id) → units_of_measure` and
+`(tenant_id, category_id) → product_categories`. The originally planned
+`sales_tax_id` / `purchase_tax_id` columns are **deferred to Phase 4**: products are
+tenant-level and tax rates company-level, so a product-level default would cross that boundary.
+Phase 4 picks taxes per document line and decides then whether a per-company default is needed.
+
+### tax_rates (T, Phase 3)
 `id`, `tenant_id`, `company_id`, `name`, `rate NUMERIC(7,4)` CK 0–100, `type_use` (`sales`, `purchase`),
 `account_id` FK (tax payable/receivable), `is_active`. **UQ (company_id, name, type_use).**
+Composite FKs `(tenant_id, company_id) → companies`, `(tenant_id, account_id) → accounts` and
+`(company_id, account_id) → accounts (company_id, id)` (the tax account belongs to the same
+company). CRUD only in Phase 3; no tax math; **no rates seeded** — each company enters its own.
 
 ## 5. Inventory
 
@@ -237,21 +262,39 @@ Like order lines, plus `account_id` FK (revenue or expense account) and `order_l
 
 ## 7. Finance
 
-### accounts (T) — chart of accounts per company
+### accounts (T, Phase 3) — chart of accounts per company
 | Column | Type | Notes |
 |---|---|---|
-| id | uuid PK | |
+| id | uuid PK | **UQ (company_id, id)** for company-level composite FKs |
 | tenant_id, company_id | uuid FK | |
 | code | varchar(20) | **UQ (company_id, code)** |
-| name | varchar(200) | |
+| name | varchar(200) | Seeded in the tenant's default language |
 | account_type | varchar(20) | CK in (`asset`, `liability`, `equity`, `income`, `expense`) |
-| subtype | varchar(30) | e.g. `receivable`, `payable`, `cash`, `bank`, `mobile_money`, `inventory`, `cogs`, `tax` |
-| parent_id | uuid FK self NULL | Group hierarchy for reports |
+| subtype | varchar(30) NULL | NULL for group accounts, NOT NULL for postable accounts; CK per type (below) |
+| system_key | varchar(30) NULL | Stable handle for posting services (`ar`, `ap`, `sales`, `fx_gain`, `wallet_evc_plus`, …); **UQ (company_id, system_key)**; survives renames and re-codes |
+| parent_id | uuid FK self NULL | Group hierarchy for reports; the parent must be a group account (service rule) |
 | is_group | bool | Group accounts cannot receive postings |
 | currency_code | char(3) NULL | Restricts postings to one currency (e.g. USD bank account) |
 | is_active | bool | |
 
-A default chart (Somali SME template) is created with each company **[DECISION: template contents]**.
+Composite FKs `(tenant_id, company_id) → companies`, `(tenant_id, parent_id) → accounts` and
+`(company_id, parent_id) → accounts (company_id, id)` (a parent belongs to the same company).
+
+Subtype values per `account_type`:
+
+| account_type | subtype values |
+|---|---|
+| asset | `cash`, `bank`, `mobile_money`, `receivable`, `inventory`, `supplier_advance`, `tax`, `fixed_asset`, `other_asset` |
+| liability | `payable`, `customer_advance`, `tax`, `other_liability` |
+| equity | `equity` |
+| income | `sales`, `other_income`, `fx_gain` |
+| expense | `cogs`, `stock_adjustment`, `operating_expense`, `fx_loss`, `other_expense` |
+
+A default chart — the Somali SME template in
+[PHASE_3_PLAN.md § 5](PHASE_3_PLAN.md#5-default-somali-sme-chart-of-accounts), 39 postable
+accounts + 7 groups — is created with each company inside the company-creating transaction,
+and backfilled for existing companies. Somali account names are AI-drafted and stay marked
+"needs review" until the owner or a Somali accountant reviews them (before milestone 3.5).
 
 ### fiscal_periods (T)
 `id`, `tenant_id`, `company_id`, `fiscal_year` smallint, `period_no` smallint, `start_date`, `end_date`,
@@ -261,7 +304,7 @@ overlapping date ranges per company.
 ### journals (T)
 `id`, `tenant_id`, `company_id`, `code`, `name`, `journal_type` CK (`sales`, `purchase`, `cash`, `bank`,
 `mobile_money`, `inventory`, `general`), `default_account_id` FK, `currency_code` NULL,
-`mobile_money_provider` NULL CK in (`evc_plus`, `zaad`, `sahal`, `edahab`, `other`), `is_active`.
+`mobile_money_provider` NULL CK in (`evc_plus`, `zaad`, `sahal`, `edahab`, `premier_wallet`, `other`), `is_active`.
 **UQ (company_id, code).** A cash box, a bank account, and a merchant wallet are each a journal.
 
 ### journal_entries (T)
@@ -285,7 +328,7 @@ overlapping date ranges per company.
 | id | uuid PK | |
 | tenant_id, entry_id | uuid FK | |
 | account_id | uuid FK | Must not be a group account |
-| contact_id | uuid FK NULL | Required for receivable/payable accounts |
+| contact_id | uuid FK NULL | Required for accounts of subtype `receivable`, `payable`, `customer_advance` and `supplier_advance` (enforced by the posting service) |
 | branch_id | uuid FK NULL | For branch reporting |
 | description | text | |
 | debit, credit | numeric(18,2) | Base currency. CK `debit >= 0 AND credit >= 0 AND (debit = 0 OR credit = 0) AND debit + credit > 0` |
@@ -342,6 +385,11 @@ Index (tenant_id, object_type, object_id), (tenant_id, created_at). The applicat
 `sha256`, `uploaded_by_id`, `created_at`.
 
 ## 9. Key posting flows (what one transaction writes)
+
+Phasing (decision 16 in the roadmap): from Phase 4, posting a customer invoice writes its
+financial effects only (Dr Receivable / Cr Revenue / Cr Tax). The stock effects and the
+Dr COGS / Cr Inventory lines in the first row below are added by Phase 5 for invoices posted
+from then on; earlier invoices get no retroactive COGS (no pilot data exists before Phase 5).
 
 | Operation | Rows written atomically |
 |---|---|

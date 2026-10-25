@@ -195,8 +195,8 @@ without RLS, so this closes the gap RLS leaves.)
   added if this is seen in practice. Fixed windows allow up to twice a limit around a window
   boundary. Counters store HMAC keys, not e-mail or IP addresses. Throttling is audited once
   per window, so throttled floods do not flood the audit log.
-- **Planned:** optional TOTP 2FA for owners/accountants (Phase 6); scoped, hashed, revocable,
-  tenant-bound API tokens for integrations (Phase 7).
+- **Planned:** optional TOTP 2FA for owners/accountants (Phase 9); scoped, hashed, revocable,
+  tenant-bound API tokens for integrations (Phase 10).
 
 ### 3.3 Client IP addresses
 `apps/core/client_ip.py` returns `REMOTE_ADDR` unless the sender is listed in
@@ -374,7 +374,7 @@ All of this is tested, including with a real login as `somali_erp_app`.
 ### 8.4 Known gaps (to be closed in later milestones)
 - Client IPs behind the Next.js proxy are the proxy's address until an edge proxy is deployed
   (see § 3.3).
-- Alerts on repeated login failures, 5xx spikes and backup failures (Phase 6).
+- Alerts on repeated login failures, 5xx spikes and backup failures (Phase 9).
 
 **Must be closed before a pilot or production use:**
 1. Edge reverse proxy that appends the real client address; `DJANGO_TRUSTED_PROXIES` set
@@ -387,10 +387,10 @@ All of this is tested, including with a real login as `somali_erp_app`.
 
 ## 9. Supply chain
 - Dependencies pinned (`requirements/*.txt`, `package-lock.json`).
-- `pip-audit` and `npm audit` in CI (Phase 6, informational earlier).
+- `pip-audit` and `npm audit` in CI (Phase 9, informational earlier).
 - Only well-maintained packages; each new dependency is justified in the PR/commit.
 
-## 10. Backups and recovery (Phase 6)
+## 10. Backups and recovery (Phase 9)
 - Daily `pg_dump` (plus WAL archiving when hosting allows), encrypted, stored off-site, 30-day retention.
 - Restore drill documented and performed before the pilot.
 

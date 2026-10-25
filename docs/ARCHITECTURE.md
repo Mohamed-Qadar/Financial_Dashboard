@@ -42,11 +42,11 @@ backend/
 │   ├── tenants/       # tenant accounts, tenant context, subscriptions (later)
 │   ├── organizations/ # companies, branches, warehouses, fiscal settings
 │   ├── contacts/      # customers and suppliers
-│   ├── catalog/       # products, categories, units of measure, taxes
+│   ├── catalog/       # products, categories, units of measure
 │   ├── inventory/     # stock movements, stock ledger, balances, valuation
 │   ├── sales/         # quotations/orders, customer invoices, credit notes
 │   ├── purchasing/    # purchase orders, receipts, supplier bills
-│   ├── finance/       # accounts, journals, entries, payments, currencies, periods
+│   ├── finance/       # accounts, tax rates, exchange rates, journals, entries, payments, currencies, periods
 │   ├── reporting/     # read-only report queries
 │   └── audit/         # audit log
 └── tests/             # cross-module and integration tests
@@ -54,6 +54,10 @@ backend/
 
 `core` was added to the original module list: health checks, the error format, and
 shared model mixins need a home that every other module can depend on.
+
+Tax rates live in `finance`, not `catalog` (changed 2026-10-25, Phase 3 plan): a tax rate
+points at its tax account (`tax_rates.account_id → accounts`), and `catalog → finance` would
+invert the dependency direction below. Products carry no tax columns until Phase 4.
 
 Apps are created only when the phase that needs them starts; no empty placeholder apps.
 
@@ -69,6 +73,14 @@ everything ─► tenants, accounts, audit, core
 Lower modules never import higher ones. When `finance` must react to a sale, `sales` calls
 a `finance` service function (`finance.services.post_journal_entry(...)`); `finance` does not
 know about invoices.
+
+**Seeding hook registry (Phase 3).** Creating a tenant or company must also create default
+rows owned by higher modules (the chart of accounts in `finance`, default units in
+`catalog`), in the same transaction. Registration lives in the lower modules, so it does not
+import them: `core` holds a small registry, `finance` and `catalog` register their seed
+functions when their app is ready, and the registration service calls the registry inside
+its `transaction.atomic()`. Existing tenants/companies are backfilled by idempotent data
+migrations that enter each tenant's context through `apps.core.tenancy`.
 
 ### Layering inside each app
 
@@ -101,6 +113,10 @@ in Phase 2, because Django cannot cleanly swap `AUTH_USER_MODEL` after the first
    `request.tenant`, `request.company`, `request.membership`.
 5. All querysets go through selectors that take them explicitly; RLS policies reject anything
    that slips through. Error responses roll back; failure audit events are written afterwards.
+6. Tenant-level data shared by a tenant's companies (contacts, products, categories, units —
+   Phase 3) uses the marker subclass `TenantScopedAPIView(CompanyScopedAPIView)`: the
+   `X-Company-ID` header is still required (it is the membership and permission check), and
+   its selectors take `request.tenant`, never filtering by company.
 
 Full details in [SECURITY.md](SECURITY.md).
 
@@ -130,7 +146,8 @@ Full details in [SECURITY.md](SECURITY.md).
 ### 3.5 API conventions
 - Base path `/api/v1/`. JSON only. OpenAPI schema at `/api/schema/`, Swagger UI at `/api/docs/` (dev).
 - Resource IDs are UUIDs.
-- Pagination: page-number, default 50, max 200.
+- Pagination: page-number, default 20, max 100 (mobile-first, changed 2026-10-25 from 50/200:
+  most users work from a phone on a weak connection). List endpoints search server-side (`?q=`).
 - Business actions are explicit endpoints: `POST /api/v1/sales/invoices/{id}/post/`.
 - Error format (implemented in Phase 1):
 
@@ -212,7 +229,7 @@ frontend/src/
 | Lint/format | Ruff (Python), ESLint + `tsc --noEmit` (TypeScript) |
 | CI | GitHub Actions workflow (backend lint + tests with a PostgreSQL service; frontend lint, type-check, tests, build). The project is local-only for now, so the same steps are run locally in Docker. |
 | Version control | Local Git only; no remote until the owner approves publishing at project completion |
-| Production (Phase 6) | Gunicorn behind a reverse proxy with TLS, managed or self-hosted PostgreSQL with backups |
+| Production (Phase 9) | Gunicorn behind a reverse proxy with TLS, managed or self-hosted PostgreSQL with backups |
 
 ### Pinned versions (Phase 1)
 

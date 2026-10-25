@@ -4,6 +4,13 @@ Status: **Approved plan.** All recommended (★) options in section 2 were accep
 on 2026-10-24. Each milestone is still implemented only after the owner approves it.
 Language of the owner's review: Turkish summary in chat; this document is the reference.
 
+**Re-scoped 2026-10-25** (owner approval of [PHASE_3_PLAN.md](PHASE_3_PLAN.md), open
+question 1): milestone 2.5 (branches) moves to Phase 3 as milestone 3.1; 2.6 (members and
+invitations) and its screens (part of 2.8b) are deferred to after Phase 4, before the pilot;
+2.9 closes Phase 2 at the reduced scope right after milestone 3.1. The roadmap was
+renumbered at the same time: references below to "Phase 3" warehouses now mean Phase 5,
+"Phase 6" means Phase 9 (hardening) and "Phase 7" means Phase 10 (expansion).
+
 ## 0. Inputs
 
 Confirmed product decisions (2026-10-24):
@@ -191,6 +198,10 @@ Order and dependencies:
                                                                                    ▼
                                    2.5 Branches ─► 2.6 Members & invitations ─► 2.8 Frontend ─► 2.9 Phase close
 ```
+
+Order after the 2026-10-25 re-scope: 2.3b registration → 2.4 roles & permissions → 2.7 backend
+i18n → (Phase 3) M3.0 docs → M3.1 branches (former 2.5) → 2.9 Phase close (reduced scope).
+2.6 and the members screens of 2.8b run after Phase 4, before the pilot.
 
 ---
 
@@ -435,7 +446,9 @@ Rollback: revert + migrate to previous; seeded rows removed with the tables.
 
 ---
 
-### Milestone 2.5 — Branch management (first fully guarded resource)
+### Milestone 2.5 — Branch management (first fully guarded resource) — ➡️ moved to Phase 3 as milestone 3.1 (2026-10-25)
+The specification below stays the reference for M3.1 ([PHASE_3_PLAN.md § 9](PHASE_3_PLAN.md#9-milestones-one-local-commit-each-pg_dump-backup-before-every-migration)).
+
 Scope / files: `apps/organizations` `selectors.py`, `services.py`, `serializers.py`, `views.py`;
 `/api/v1/branches/` list/create/retrieve/update/archive (no hard delete); company settings
 update (name, timezone; base currency immutable once postings exist — no postings yet, so
@@ -453,7 +466,7 @@ Acceptance: isolation helper green for every branch endpoint. Rollback: revert (
 
 ---
 
-### Milestone 2.6 — Members and invitations
+### Milestone 2.6 — Members and invitations — ⏸️ deferred to after Phase 4, before the pilot (2026-10-25)
 Blocked by: D3.
 
 Scope / files: `Invitation` model (token **hash** stored, expiry 7 days, single use, email,
@@ -508,6 +521,11 @@ development-only UI preview. Differences from the text below: the active company
 the **URL** (`/c/<companyId>/`, per tab) instead of a cookie; no runtime dependencies;
 registration, branches and members screens wait for 2.3b, 2.5 and 2.6.
 
+**M2.8b after the 2026-10-25 re-scope:** the registration screen stays in Phase 2 (with
+2.3b); the branch screens ship with M3.1; the members and invitation screens are deferred
+with 2.6. The acceptance walkthrough below is therefore split: "register, log in, pick a
+company, manage branches" closes with 2.9; "invite a member" closes with 2.6.
+
 Scope / files: `src/lib/api.ts` (fetch wrapper: CSRF token, `X-Company-ID`, error envelope,
 401/403/404 handling), `src/lib/i18n/` (`so.ts`, `en.ts`, typed keys, `Intl` formatters),
 `src/middleware.ts` (redirect unauthenticated users to login), screens: login, register,
@@ -532,8 +550,11 @@ member, in Somali or English. Rollback: revert (no schema).
 Scope: full security sweep (permission-declared test, RLS catalog test, composite-FK test,
 isolation helper on every endpoint), `check --deploy`, docs updated (ARCHITECTURE, SECURITY,
 DATABASE_DESIGN, ROADMAP Phase 2 → done), clean-checkout verification as in Phase 1, final local commit.
-Acceptance = roadmap Phase 2 criteria (updated for D9: warehouse moved to Phase 3).
+Acceptance = roadmap Phase 2 criteria (updated for D9: warehouse moved to Phase 5 after the
+2026-10-25 renumbering). Runs right after M3.1, at the reduced scope (no 2.5 — done as M3.1;
+no 2.6 — deferred); the isolation-helper sweep covers the endpoints that exist then.
 
 ## 5. What will not be in Phase 2
-Two-factor authentication (Phase 6), real email/SMS providers, subscriptions/billing, API tokens
-for integrations (Phase 7), Django admin exposure (stays disabled), warehouses (Phase 3).
+Two-factor authentication (Phase 9), real email/SMS providers, subscriptions/billing, API tokens
+for integrations (Phase 10), Django admin exposure (stays disabled), warehouses (Phase 5),
+branches CRUD (Phase 3, M3.1), members and invitations (after Phase 4, before the pilot).

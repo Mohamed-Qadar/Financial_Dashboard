@@ -10,7 +10,7 @@ POS tools. Existing ERPs (Odoo, ERPNext, SAP Business One) are either expensive,
 configure, or do not fit local practice:
 
 - Business is conducted in **USD and Somali shilling (SOS)** at the same time, often in one transaction.
-- **Mobile money** (EVC Plus, ZAAD, Sahal, e-Dahab) is a primary payment channel, not an afterthought.
+- **Mobile money** (EVC Plus, ZAAD, Sahal, e-Dahab, Premier Wallet) is a primary payment channel, not an afterthought.
 - Credit sales to known customers (*deyn*) are common, so receivables tracking matters.
 - Staff need a **Somali-language** interface; owners and accountants often prefer English.
 - Connectivity and power can be unreliable.
@@ -28,7 +28,9 @@ configure, or do not fit local practice:
 
 ## 3. Scope
 
-### MVP (Phases 1–6) — the first commercially useful release
+### MVP (Phases 1–9) — the first commercially useful release
+Phase order (re-ordered 2026-10-25, see [roadmap](DEVELOPMENT_ROADMAP.md)): master data → sales
+→ inventory → purchasing → accounting close → dashboards → hardening and pilot preparation.
 1. Multi-tenant accounts. Each tenant can own several companies, each with branches and warehouses.
 2. Users, roles and permissions, enforced on the server.
 3. Customers and suppliers (contacts).
@@ -44,7 +46,7 @@ configure, or do not fit local practice:
 13. Audit trail for every create, update, post, cancel, and reversal.
 14. CSV import/export for master data, plus a backup/restore procedure.
 
-### Later (Phase 7+)
+### Later (Phase 10+)
 POS with offline tolerance, CRM pipeline, HR/payroll/leave, manufacturing, projects,
 subscriptions/billing for the SaaS itself, public API and webhooks, provider integrations
 (mobile money, SMS, WhatsApp), mobile apps.
