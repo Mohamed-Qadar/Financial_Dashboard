@@ -69,6 +69,7 @@ NOT_COMPANY_SCOPED = {
     "apps.core.views.LivenessView",
     "apps.core.views.ReadinessView",
     "apps.organizations.views.CompanyListView",
+    "apps.organizations.views.RegisterView",
 }
 
 

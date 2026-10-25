@@ -25,6 +25,11 @@ RESET_REQUEST_PER_IP = RateLimit("reset_request_ip_hour", limit=5, window_second
 RESET_REQUEST_PER_EMAIL = RateLimit("reset_request_email_hour", limit=3, window_seconds=3600)
 RESET_CONFIRM_PER_IP = RateLimit("reset_confirm_ip_hour", limit=20, window_seconds=3600)
 
+# Mobile networks in Somalia put many subscribers behind one carrier-grade NAT address, so
+# the per-IP registration limit is looser than the per-e-mail one.
+REGISTER_PER_IP = RateLimit("register_ip_hour", limit=10, window_seconds=3600)
+REGISTER_PER_EMAIL = RateLimit("register_email_hour", limit=3, window_seconds=3600)
+
 
 def enforce(request, checks: list[tuple[RateLimit, str]], event: AuditEvent) -> None:
     """Count the attempt against each limit in order; raise Throttled at the first excess.

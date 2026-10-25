@@ -42,6 +42,14 @@ class AuditEvent(models.TextChoices):
         "tenancy.company_access_throttled",
         "Denied company access attempts rate-limited",
     )
+    # Registration (milestone 2.3b)
+    BUSINESS_REGISTERED = "tenancy.business_registered", "Business registered"
+    MEMBERSHIP_CREATED = "tenancy.membership_created", "Membership created"
+    REGISTRATION_FAILED = "tenancy.registration_failed", "Registration failed"
+    REGISTRATION_THROTTLED = (
+        "tenancy.registration_throttled",
+        "Registration attempts rate-limited",
+    )
 
 
 class Outcome(models.TextChoices):

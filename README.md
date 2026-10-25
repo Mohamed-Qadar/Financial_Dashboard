@@ -46,7 +46,8 @@ docker compose up --build     # first run builds images and applies migrations
 The web app proxies `/api/*` to Django, so `http://localhost:3000/api/v1/health/` works too.
 
 Authentication API (session cookies + CSRF): `/api/v1/auth/` — `csrf/`, `login/`, `logout/`,
-`me/`, `password/change/`, `password/reset/`, `password/reset/confirm/`. Details and limits in
+`me/`, `password/change/`, `password/reset/`, `password/reset/confirm/`, `register/` (new
+business + owner, open in development; `DJANGO_REGISTRATION_OPEN`). Details and limits in
 [docs/SECURITY.md § 3](docs/SECURITY.md#3-authentication-implemented-in-milestone-22).
 In development, password-reset e-mails are printed to the backend log (`docker compose logs backend`).
 

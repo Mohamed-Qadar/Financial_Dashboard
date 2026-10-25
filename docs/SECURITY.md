@@ -152,6 +152,7 @@ without RLS, so this closes the gap RLS leaves.)
 | `POST password/change/` | session, CSRF | Current + new password; 204 |
 | `POST password/reset/` | anyone, CSRF | Always 202 (unless rate-limited) |
 | `POST password/reset/confirm/` | anyone, CSRF | uid + token + new password; 204; 400 `invalid_reset_link` |
+| `POST register/` | anyone, CSRF, `REGISTRATION_OPEN` | New business + owner; always 202 for valid input; 403 `registration_closed` (§ 3.4) |
 
 ### 3.2 Controls
 - **Sessions:** Django database sessions; cookie `HttpOnly`, `SameSite=Lax`, `Secure` in
@@ -159,7 +160,7 @@ without RLS, so this closes the gap RLS leaves.)
   Absolute limit 7 days after login (`AbsoluteSessionLifetimeMiddleware`; sessions without a
   login time count as expired). The session key is rotated at login (session fixation).
 - **CSRF:** every unsafe request needs the `X-CSRFToken` header matching the cookie, and a
-  matching `Origin` when the browser sends one. Login, logout and password-reset views use
+  matching `Origin` when the browser sends one. Login, logout, registration and password-reset views use
   `csrf_protect` explicitly, because DRF only checks CSRF for authenticated sessions (login
   CSRF). Failures answer 403 `csrf_failed` in the standard error format.
 - **Passwords:** Argon2id (Django's `Argon2PasswordHasher`) first; PBKDF2/scrypt hashes still
@@ -186,6 +187,7 @@ without RLS, so this closes the gap RLS leaves.)
   | Password change | 5/min and 20/h per user |
   | Password reset request | 5/h per IP; 3/h per e-mail |
   | Password reset confirm | 20/h per IP |
+  | Registration | 10/h per IP (looser: mobile carriers share NAT addresses); 3/h per e-mail |
 
   Lockout resistance: per-account limits are keyed by account *and* IP, so failures from one
   address do not block the owner elsewhere; checks stop at the first exceeded limit, so attempts
@@ -216,6 +218,27 @@ client address to `X-Forwarded-For`; Next.js and Django reachable only through i
 the edge proxy and the Next.js network in `DJANGO_TRUSTED_PROXIES`. Production startup fails
 unless `DJANGO_TRUSTED_PROXIES` is set explicitly (an empty value is allowed and means "trust
 none").
+
+### 3.4 Registration (milestone 2.3b)
+`POST /api/v1/auth/register/` (email, password, full name, business name, language `so`/`en`,
+default `so`) creates, in **one transaction** run in the new tenant's RLS stage: the user, the
+tenant, an active **owner** membership, the first company (code `MAIN`, base currency USD,
+`Africa/Mogadishu`, fiscal year from January) and its default branch (code `MAIN`, named after
+the business), with the audit events `tenancy.business_registered` and
+`tenancy.membership_created`. Any failure rolls all of it back (503 `service_unavailable`).
+No warehouse (Phase 5) and no chart of accounts (milestone 3.5) are created yet.
+
+- **Open or closed:** `DJANGO_REGISTRATION_OPEN` — default open in development and test,
+  closed in production; closed answers 403 `registration_closed`.
+- **No enumeration:** every valid request answers 202 with an empty body. For an address that
+  already has an account nothing is written, the password is still hashed (same cost), a
+  `tenancy.registration_failed` event (`email_taken`) is recorded, and the address receives a
+  notice e-mail. Two simultaneous registrations of one address end the same way: the unique
+  index catches the second. *Limitation:* sending that e-mail synchronously makes the "taken"
+  case measurably slower with a real mail server — the same gap as password reset (§ 3.2), closed
+  by the background e-mail queue.
+- **No auto-login:** the owner signs in through `login/` afterwards, so the response never
+  differs between the two cases. E-mail verification is not required yet (decision D4).
 
 ## 4. Authorization
 

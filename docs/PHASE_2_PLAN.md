@@ -368,6 +368,27 @@ the plan below:
 - Migrations: `core.0003_rls_context_functions`, `audit.0002_audit_rls`, `finance.0001`,
   `tenants.0001`, `organizations.0001`.
 
+**2.3b — ✅ done 2026-10-25.** `POST /api/v1/auth/register/` (details: SECURITY.md § 3.4).
+Differences from the plan below:
+- `register_business()` lives in `apps/organizations/services.py`, not `apps/tenants`: it
+  creates companies and branches, and `tenants` sits below `organizations` in the dependency
+  direction. The view and URL are in `organizations` too (served under `/api/v1/auth/`).
+- **No migration**: the runtime role already has `INSERT` on the four tenancy tables, and
+  the existing `tenant_isolation` policies accept the rows because the whole registration
+  runs in the new tenant's stage (`tenancy.tenant_context`). No new tables.
+- New owner signs in afterwards (no auto-login); an already-registered e-mail gets the same
+  202, nothing is written, and the address gets a notice e-mail.
+- Company code `MAIN`, branch code `MAIN`, branch named after the business (no translated
+  default name needed); base currency USD.
+- Not created (new phase order): no warehouse (Phase 5), no default units (M3.3), no chart
+  of accounts (M3.5) — a TODO marks where the core seeding hook registry will be called.
+- `email_verified_at` (D4) is not added yet: nothing verifies e-mail before a provider exists.
+- Audit events: `tenancy.business_registered`, `tenancy.membership_created`,
+  `tenancy.registration_failed`, `tenancy.registration_throttled`. Setting
+  `DJANGO_REGISTRATION_OPEN` (default open except in production). Rate limits 10/h per IP,
+  3/h per e-mail.
+- The registration **screen** is not part of 2.3b; it follows as a separate frontend step.
+
 Scope / files:
 - New apps: `tenants` (`Tenant`, `Membership`), `organizations` (`Company`, `Branch` model only —
   CRUD comes in 2.5), `finance` (`Currency` reference model seeded with USD, SOS).

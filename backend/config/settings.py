@@ -199,6 +199,10 @@ FRONTEND_BASE_URL = env("DJANGO_FRONTEND_BASE_URL", "http://localhost:3000").rst
 EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", "Somali ERP <no-reply@localhost>")
 
+# Self-registration of new businesses (milestone 2.3b, decision D3). Closed by default in
+# production: the platform operator opens it deliberately.
+REGISTRATION_OPEN = env_bool("DJANGO_REGISTRATION_OPEN", default=not IS_PRODUCTION)
+
 # Proxies whose X-Forwarded-For is believed (CIDR list). Empty = trust none. The Next.js
 # rewrite proxy must NOT be listed on its own: it forwards client-supplied headers unchanged.
 try:

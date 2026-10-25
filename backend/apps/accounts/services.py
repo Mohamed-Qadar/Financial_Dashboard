@@ -61,6 +61,26 @@ def send_password_reset_email(user) -> None:
     )
 
 
+def send_registration_notice_email(email: str) -> None:
+    """Tell an existing account holder that someone tried to register with their address.
+
+    Registration answers 202 whether or not the address is taken, so this e-mail is the
+    only place the existing account is mentioned.
+    """
+    send_mail(
+        subject="Somali ERP registration attempt",
+        message=(
+            "Someone tried to register a new business on Somali ERP with this e-mail address,\n"
+            "which already has an account. No new account was created.\n\n"
+            f"To sign in, open {settings.FRONTEND_BASE_URL}/login\n"
+            f"Forgot your password? {settings.FRONTEND_BASE_URL}/forgot-password\n\n"
+            "If this was not you, you can ignore this e-mail."
+        ),
+        from_email=None,
+        recipient_list=[email],
+    )
+
+
 def user_from_reset_link(uid: str, token: str):
     """The active user a valid reset link belongs to, or None (expired, used or forged)."""
     User = get_user_model()
