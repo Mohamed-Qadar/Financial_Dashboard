@@ -1,44 +1,23 @@
-# Secrets and local environment
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.p12
-*.pfx
-docker-compose.override.yml
-
-# Database files, dumps and backups
-*.sqlite3
-*.dump
-*.sql.gz
-backups/
-
-# Logs
-*.log
-
-# Python
 __pycache__/
-*.py[cod]
+*.pyc
+.pytest_cache/
 .venv/
 venv/
-.pytest_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-backend/staticfiles/
-backend/media/
+data/*.db
+data/*.db-journal
+exports/excel/*.xlsx
+exports/reports/*.pdf
+!data/.gitkeep
+!exports/excel/.gitkeep
+!exports/reports/.gitkeep
+.streamlit/secrets.toml
 
-# Node / Next.js
-node_modules/
-frontend/.next/
-frontend/out/
-frontend/coverage/
-frontend/next-env.d.ts
-*.tsbuildinfo
-
-# Editors and OS
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+# Desktop build outputs and local tooling
+.venv-build/
+build/
+dist/
+*.spec.bak
+data/backups/
+data/logs/
+data/webview/
+data/exports/

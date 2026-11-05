@@ -1,0 +1,86 @@
+name: Build Windows desktop app
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed only by the release job (uploading assets)
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test, package and create installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Verify tag matches the application version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $app = (python -c "import config; print(config.APP_VERSION)").Trim()
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          if ($app -ne $tag) { throw "Tag v$tag does not match APP_VERSION $app in config.py" }
+          Write-Host "Version $app matches tag."
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build executable, portable ZIP and installer
+        shell: pwsh
+        run: .\build_windows.ps1 -SkipTests -Python python
+
+      - name: Smoke-test the packaged server (loopback only, all pages)
+        shell: pwsh
+        run: python tools\smoke_test_bundle.py dist\DailyMoneyTransferManager\DailyMoneyTransferManager.exe
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DailyMoneyTransferManager-windows-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/installer/DailyMoneyTransferManager-Setup.exe
+            dist/DailyMoneyTransferManager-Portable.zip
+            dist/SHA256SUMS.txt
+
+      - name: Extract release notes from CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: python tools\release_notes.py "${{ github.ref_name }}" > dist\RELEASE_NOTES.md; Get-Content dist\RELEASE_NOTES.md
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Daily Money Transfer Manager ${{ github.ref_name }}
+          body_path: dist/RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/installer/DailyMoneyTransferManager-Setup.exe
+            dist/DailyMoneyTransferManager-Portable.zip
+            dist/SHA256SUMS.txt
